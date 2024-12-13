@@ -10,4 +10,4 @@ n_samples_per_client = 400
 n_features = 2
 random_state = 42
 merging_threshold = 4.0
-visualize = True
+visualize = False

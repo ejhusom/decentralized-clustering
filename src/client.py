@@ -10,6 +10,7 @@ class LocalClient:
         self.n_clusters = n_clusters
         self.clustering_method = clustering_method
         self.centroids = None
+        self.global_centroids = None
         self.metadata = None
         self.model = None
         self.visualize = visualize
@@ -67,20 +68,16 @@ class LocalClient:
 
         return global_labels
 
-    # def retrain_with_global_centroids(self, global_centroids):
-    #     # Initialize clustering with global centroids
-    #     model = KMeans(n_clusters=len(global_centroids), init=global_centroids, n_init=1, random_state=42)
-    #     model.fit(self.data)
-    #     self.centroids = model.cluster_centers_
-    #     self.metadata = {
-    #         "weights": np.bincount(model.labels_),
-    #         "variance": [np.var(self.data[model.labels_ == i], axis=0) for i in range(self.n_clusters)],
-    #     }
+    def retrain(self, global_centroids):
+        # Initialize clustering with global centroids
+        model = KMeans(n_clusters=len(global_centroids), init=global_centroids, n_init=1, random_state=42)
+        model.fit(self.data)
+        self.centroids = model.cluster_centers_
 
-    #     if self.visualize:
-    #         plt.scatter(self.data[:, 0], self.data[:, 1], c=model.labels_, cmap='viridis')
-    #         plt.scatter(self.centroids[:, 0], self.centroids[:, 1], c='red', s=100, alpha=0.5)
-    #         plt.title(f"Client {self.client_id} with {self.n_clusters} clusters using {self.clustering_method}")
-    #         plt.show()
+        if self.visualize:
+            plt.scatter(self.data[:, 0], self.data[:, 1], c=model.labels_, cmap='viridis')
+            plt.scatter(self.centroids[:, 0], self.centroids[:, 1], c='red', s=100, alpha=0.5)
+            plt.title(f"Client {self.client_id} with {self.n_clusters} clusters using {self.clustering_method}")
+            plt.show()
 
-    #     return self.centroids
+        return self.centroids
