@@ -67,6 +67,7 @@ if __name__ == "__main__":
             print(f"Silhouette Score: {silhouette}\n")
 
             metrics[f"client_{client.client_id}"]["local"]["ari"].append(ari)
+            metrics[f"client_{client.client_id}"]["local"]["silhouette"].append(silhouette)
 
 
         # Aggregate at server
@@ -120,14 +121,17 @@ if __name__ == "__main__":
                 random_state=42
             )
 
-            # Plot old and new data for client i, showing the distribution shift
+            # Plot old and new data for client i, showing the distribution shift, and also the combined data, in 3 subplots
             if config.visualize:
-                fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+                fig, ax = plt.subplots(1, 3, figsize=(15, 5))
                 ax[0].scatter(client.data[:, 0], client.data[:, 1], c=client.labels, cmap='viridis')
-                ax[0].set_title(f"Client {client.client_id} - Old Data")
+                ax[0].set_title(f"Client {i} - Old Data")
                 ax[1].scatter(new_batch_data[:, 0], new_batch_data[:, 1], c=new_batch_labels, cmap='viridis')
-                ax[1].set_title(f"Client {client.client_id} - New Batch")
+                ax[1].set_title(f"Client {i} - New Batch")
+                ax[2].scatter(np.concatenate([client.data, new_batch_data])[:, 0], np.concatenate([client.data, new_batch_data])[:, 1], c=np.concatenate([client.labels, new_batch_labels]), cmap='viridis')
+                ax[2].set_title(f"Client {i} - Combined Data")
                 plt.show()
+
 
             # Assume you have initial data and a new batch
             updated_data, updated_labels = append_client_data(
@@ -196,7 +200,7 @@ if __name__ == "__main__":
     # plt.show()
 
     # Plot the silhouette scores (not the ARI). There should be three subplots: One for the local silhouette scores, one for the global silhouette scores, and one for the server silhouette scores (pre- and post-aggregation).
-    print(metrics)
+    print(metrics["client_0"]["local"]["silhouette"])
     fig, ax = plt.subplots(1, 3, figsize=(15, 5))
     for client_id in range(config.n_clients):
         ax[0].plot(metrics[f"client_{client_id}"]["local"]["silhouette"], label=f"Client {client_id} - Local")

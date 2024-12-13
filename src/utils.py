@@ -267,6 +267,7 @@ def partition_data(base_data, base_labels, n_clients,
     return client_data, client_labels, cluster_distribution
 
 def generate_synthetic_batch(base_data, base_labels, 
+                              percentage=0.2,
                               cluster_distribution=None,
                               distribution_shift_type='mild',
                               noise_level=0.1,
@@ -280,16 +281,13 @@ def generate_synthetic_batch(base_data, base_labels,
         Original dataset to use as a reference for synthetic data generation
     base_labels : numpy.ndarray
         Original labels corresponding to base_data
+    percentage : float, optional
     cluster_distribution : dict, optional
     distribution_shift_type : str, optional
         Type of distribution shift to simulate:
         - 'mild': Small, subtle changes in data distribution
         - 'moderate': Noticeable shifts in data characteristics
         - 'significant': Large, potentially disruptive changes
-        - 'class_imbalance': Changes in class proportions
-        - 'feature_drift': Shifts in feature distributions
-    noise_level : float, optional
-        Intensity of the distribution shift (0.0 to 1.0)
     random_state : int, optional
         Seed for reproducible randomness
 
@@ -303,88 +301,90 @@ def generate_synthetic_batch(base_data, base_labels,
 
     # Get unique labels and their current distribution
     unique_labels = np.unique(base_labels)
-    current_label_dist = np.bincount(base_labels) / len(base_labels)
 
-    # Compute batch size (default to 20% of original data)
-    batch_size = max(50, int(0.2 * len(base_data)))
+    # Create a mapping from cluster to data points
+    clusters = {label: base_data[base_labels == label] for label in unique_labels}
+    cluster_labels = {label: label * np.ones(len(clusters[label]), dtype=base_labels.dtype) for label in unique_labels}
+
+
+
+    client_clusters = cluster_distribution['clusters']
+    client_proportions = cluster_distribution['proportions']
+
+    # Based on the distribution shift type, new clusters may be added or removed from client_clusters. unique_labels indicate all available clusters, while client_clusters indicate the clusters that the client is currently using.
+    if distribution_shift_type == 'mild':
+        cluster_shift = rng.integers(-1, 2)
+    elif distribution_shift_type == 'moderate':
+        cluster_shift = rng.integers(-2, 3)
+    elif distribution_shift_type == 'significant':
+        cluster_shift = rng.integers(-4, 5)
+    else:
+        raise ValueError("Invalid distribution shift type")
+
+    # Add or remove clusters
+    if cluster_shift > 0:
+        # Add new clusters
+        new_clusters = rng.choice(
+            np.setdiff1d(unique_labels, client_clusters),
+            cluster_shift,
+            replace=False
+        )
+        client_clusters = np.concatenate([client_clusters, new_clusters])
+        client_proportions = np.concatenate([client_proportions, rng.dirichlet(np.ones(cluster_shift))])
+
+    elif cluster_shift < 0:
+        # Remove existing clusters
+        remove_indices = rng.choice(len(client_clusters), -cluster_shift, replace=False)
+        client_clusters = np.delete(client_clusters, remove_indices)
+        client_proportions = np.delete(client_proportions, remove_indices)
+
+    # Based on the distribution shift type, a shift is applied to the proportions of the clusters
+    if distribution_shift_type == 'mild':
+        # Apply a mild shift to the cluster proportions
+        shift = rng.uniform(-0.1, 0.1, len(client_proportions))
+        client_proportions += shift
+        client_proportions /= np.sum(client_proportions)
+    elif distribution_shift_type == 'moderate':
+        # Apply a moderate shift to the cluster proportions
+        shift = rng.uniform(-0.2, 0.2, len(client_proportions))
+        client_proportions += shift
+        client_proportions /= np.sum(client_proportions)
+    elif distribution_shift_type == 'significant':
+        # Apply a significant shift to the cluster proportions
+        shift = rng.uniform(-0.5, 0.5, len(client_proportions))
+        client_proportions += shift
+        client_proportions /= np.sum(client_proportions)
+    else:
+        raise ValueError("Invalid distribution shift type")
 
     # Initialize new batch data and labels
     new_batch_data = []
     new_batch_labels = []
 
-    # Determine label distribution for new batch based on shift type
-    if distribution_shift_type == 'mild':
-        # Slight perturbation of original distribution
-        label_dist_shift = current_label_dist + rng.normal(0, noise_level, len(current_label_dist))
-        label_dist_shift = np.abs(label_dist_shift)
-        label_dist_shift /= label_dist_shift.sum()
+    for cluster, proportion in zip(client_clusters, client_proportions):
+        cluster_data = clusters[cluster]
+        cluster_client_labels = cluster_labels[cluster]
 
-    elif distribution_shift_type == 'moderate':
-        # More significant shift, but still maintaining some original characteristics
-        label_dist_shift = rng.dirichlet(current_label_dist * (1 + noise_level))
+        # Determine number of samples to draw
+        n_samples = int(len(cluster_data) * proportion * percentage)
 
-    elif distribution_shift_type == 'significant':
-        # Dramatic redistribution of labels
-        label_dist_shift = rng.dirichlet(np.ones(len(unique_labels)) * (1 + noise_level))
-
-    elif distribution_shift_type == 'class_imbalance':
-        # Simulate class imbalance by heavily skewing distribution
-        imbalance_alpha = np.ones(len(unique_labels))
-        imbalance_alpha[rng.choice(len(unique_labels), size=1)] *= (1 + 2 * noise_level)
-        label_dist_shift = rng.dirichlet(imbalance_alpha)
-
-    elif distribution_shift_type == 'feature_drift':
-        # Default to moderate distribution shift for feature drift
-        label_dist_shift = rng.dirichlet(current_label_dist * (1 + noise_level))
-
-    else:
-        raise ValueError(f"Unknown distribution_shift_type: {distribution_shift_type}")
-
-    # Ensure distribution sums to 1
-    label_dist_shift /= label_dist_shift.sum()
-
-    # Sample labels based on new distribution
-    new_batch_labels = rng.choice(unique_labels, size=batch_size, p=label_dist_shift)
-
-    # Generate synthetic data for each label
-    for label in unique_labels:
-        # Find original data for this label
-        label_data = base_data[base_labels == label]
-
-        # Number of samples for this label in new batch
-        n_label_samples = np.sum(new_batch_labels == label)
-
-        if n_label_samples > 0:
-            # Compute mean and covariance of original label data
-            label_mean = np.mean(label_data, axis=0)
-            label_cov = np.cov(label_data.T)
-
-            # Add noise based on distribution shift type
-            if distribution_shift_type == 'feature_drift':
-                # Introduce feature-level drift
-                drift_noise = rng.normal(0, noise_level, label_mean.shape)
-                synthetic_samples = rng.multivariate_normal(
-                    label_mean + drift_noise,
-                    label_cov * (1 + noise_level),
-                    n_label_samples
+        # Randomly sample with replacement if needed
+        try:
+            if n_samples > 0:
+                sampled_indices = rng.choice(
+                    len(cluster_data),
+                    size=n_samples,
+                    replace=False
                 )
-            else:
-                # Standard synthetic data generation
-                synthetic_samples = rng.multivariate_normal(
-                    label_mean,
-                    label_cov * (1 + 0.5 * noise_level),
-                    n_label_samples
-                )
+                new_batch_data.append(cluster_data[sampled_indices])
+                new_batch_labels.append(cluster_client_labels[sampled_indices])
+        except ValueError as e:
+            print(f"Error: {e}")
+            print(f"Cluster: {cluster}, Proportion: {proportion}, n_samples: {n_samples}")
+            breakpoint()
 
-            new_batch_data.append(synthetic_samples)
-
-    # Combine and potentially shuffle the new batch
     new_batch_data = np.vstack(new_batch_data)
-
-    # Optional: Add some global noise
-    if noise_level > 0:
-        global_noise = rng.normal(0, noise_level, new_batch_data.shape)
-        new_batch_data += global_noise
+    new_batch_labels = np.concatenate(new_batch_labels)
 
     return new_batch_data, new_batch_labels
 
