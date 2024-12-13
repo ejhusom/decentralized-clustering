@@ -8,6 +8,6 @@ n_centers_generated = 8
 # n_centers_generated = 6
 n_samples_per_client = 400
 n_features = 2
-random_state = 42
+random_state = 40
 merging_threshold = 4.0
 visualize = False

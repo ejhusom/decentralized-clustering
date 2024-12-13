@@ -149,56 +149,6 @@ if __name__ == "__main__":
             client.data = updated_data
             client.labels = updated_labels
 
-    # Plot metrics
-    # for client_id in range(config.n_clients):
-    #     fig, ax = plt.subplots(1, 2, figsize=(10, 5))
-    #     ax[0].plot(metrics[f"client_{client_id}"]["local"]["ari"], label="Local ARI")
-    #     ax[0].plot(metrics[f"client_{client_id}"]["global"]["ari"], label="Global ARI")
-    #     ax[0].set_title(f"Client {client_id} - ARI")
-    #     ax[0].legend()
-
-    #     ax[1].plot(metrics[f"client_{client_id}"]["local"]["silhouette"], label="Local Silhouette")
-    #     ax[1].plot(metrics[f"client_{client_id}"]["global"]["silhouette"], label="Global Silhouette")
-    #     ax[1].set_title(f"Client {client_id} - Silhouette")
-    #     ax[1].legend()
-
-    #     plt.show()
-
-    # fig, ax = plt.subplots(1, 2, figsize=(10, 5))
-    # ax[0].plot(metrics["server"]["pre_aggregation"]["ari"], label="Pre-aggregation ARI")
-    # ax[0].plot(metrics["server"]["post_aggregation"]["ari"], label="Post-aggregation ARI")
-    # ax[0].set_title("Server - ARI")
-    # ax[0].legend()
-
-    # ax[1].plot(metrics["server"]["pre_aggregation"]["silhouette"], label="Pre-aggregation Silhouette")
-    # ax[1].plot(metrics["server"]["post_aggregation"]["silhouette"], label="Post-aggregation Silhouette")
-    # ax[1].set_title("Server - Silhouette")
-    # ax[1].legend()
-
-    # plt.show()
-
-
-    # Plot the silhouette scores, one line for each client. Subplot for each metric (local and global), and one for the server.
-    # fig, ax = plt.subplots(1, 2, figsize=(10, 5))
-    # for client_id in range(config.n_clients):
-    #     ax[0].plot(metrics[f"client_{client_id}"]["local"]["silhouette"], label=f"Client {client_id} - Local")
-    #     ax[0].plot(metrics[f"client_{client_id}"]["global"]["silhouette"], label=f"Client {client_id} - Global")
-    # ax[0].plot(metrics["server"]["pre_aggregation"]["silhouette"], label="Server - Pre-aggregation")
-    # ax[0].plot(metrics["server"]["post_aggregation"]["silhouette"], label="Server - Post-aggregation")
-    # ax[0].set_title("Silhouette Scores")
-    # ax[0].legend()
-
-    # # Plot the ARI scores, one line for each client. Subplot for each metric (local and global), and one for the server.
-    # for client_id in range(config.n_clients):
-    #     ax[1].plot(metrics[f"client_{client_id}"]["local"]["ari"], label=f"Client {client_id} - Local")
-    #     ax[1].plot(metrics[f"client_{client_id}"]["global"]["ari"], label=f"Client {client_id} - Global")
-    # ax[1].plot(metrics["server"]["pre_aggregation"]["ari"], label="Server - Pre-aggregation")
-    # ax[1].plot(metrics["server"]["post_aggregation"]["ari"], label="Server - Post-aggregation")
-    # ax[1].set_title("Adjusted Rand Index Scores")
-    # ax[1].legend()
-
-    # plt.show()
-
     # Plot the silhouette scores (not the ARI). There should be three subplots: One for the local silhouette scores, one for the global silhouette scores, and one for the server silhouette scores (pre- and post-aggregation).
     print(metrics["client_0"]["local"]["silhouette"])
     fig, ax = plt.subplots(1, 3, figsize=(15, 5))

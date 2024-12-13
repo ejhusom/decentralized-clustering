@@ -270,7 +270,6 @@ def generate_synthetic_batch(base_data, base_labels,
                               percentage=0.2,
                               cluster_distribution=None,
                               distribution_shift_type='mild',
-                              noise_level=0.1,
                               random_state=None):
     """
     Generate a synthetic new batch of data with controlled distribution characteristics.
