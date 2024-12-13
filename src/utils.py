@@ -107,12 +107,6 @@ def mnist_clustering_experiment(n_clients=5, n_features=50):
     # Partition data across clients
     client_data, client_labels = custom_mnist_partition(X, y, n_clients=n_clients)
 
-    # Rest of your existing federated clustering pipeline
-    # You'll need to modify some existing functions to work with this data
-
-    # Example evaluation metrics
-    from sklearn.metrics import adjusted_rand_score, silhouette_score
-
     # Visualize client data distributions
     import matplotlib.pyplot as plt
     plt.figure(figsize=(15, 5))
@@ -267,7 +261,7 @@ def partition_data(base_data, base_labels, n_clients,
     return client_data, client_labels, cluster_distribution
 
 def generate_synthetic_batch(base_data, base_labels, 
-                              percentage=0.2,
+                              n_samples=10,
                               cluster_distribution=None,
                               distribution_shift_type='mild',
                               random_state=None):
@@ -280,7 +274,7 @@ def generate_synthetic_batch(base_data, base_labels,
         Original dataset to use as a reference for synthetic data generation
     base_labels : numpy.ndarray
         Original labels corresponding to base_data
-    percentage : float, optional
+    n_samples : int, optional
     cluster_distribution : dict, optional
     distribution_shift_type : str, optional
         Type of distribution shift to simulate:
@@ -310,32 +304,31 @@ def generate_synthetic_batch(base_data, base_labels,
     client_clusters = cluster_distribution['clusters']
     client_proportions = cluster_distribution['proportions']
 
-    # Based on the distribution shift type, new clusters may be added or removed from client_clusters. unique_labels indicate all available clusters, while client_clusters indicate the clusters that the client is currently using.
+    # Based on the distribution shift type, new clusters may be added to the client.
     if distribution_shift_type == 'mild':
-        cluster_shift = rng.integers(-1, 2)
+        cluster_shift = rng.integers(1, max(1, int(len(unique_labels) * 0.2)))
     elif distribution_shift_type == 'moderate':
-        cluster_shift = rng.integers(-2, 3)
+        cluster_shift = rng.integers(1, max(2, int(len(unique_labels) * 0.3)))
     elif distribution_shift_type == 'significant':
-        cluster_shift = rng.integers(-4, 5)
+        cluster_shift = rng.integers(1, max(3, int(len(unique_labels) * 0.5)))
     else:
         raise ValueError("Invalid distribution shift type")
 
     # Add or remove clusters
-    if cluster_shift > 0:
-        # Add new clusters
-        new_clusters = rng.choice(
-            np.setdiff1d(unique_labels, client_clusters),
-            cluster_shift,
-            replace=False
-        )
-        client_clusters = np.concatenate([client_clusters, new_clusters])
-        client_proportions = np.concatenate([client_proportions, rng.dirichlet(np.ones(cluster_shift))])
+    if cluster_shift < 1:
+        cluster_shift = 1
 
-    elif cluster_shift < 0:
-        # Remove existing clusters
-        remove_indices = rng.choice(len(client_clusters), -cluster_shift, replace=False)
-        client_clusters = np.delete(client_clusters, remove_indices)
-        client_proportions = np.delete(client_proportions, remove_indices)
+    if cluster_shift > len(np.setdiff1d(unique_labels, client_clusters)):
+        cluster_shift = len(np.setdiff1d(unique_labels, client_clusters))
+
+    # Add new clusters
+    new_clusters = rng.choice(
+        np.setdiff1d(unique_labels, client_clusters),
+        cluster_shift,
+        replace=False
+    )
+    client_clusters = np.concatenate([client_clusters, new_clusters])
+    client_proportions = np.concatenate([client_proportions, rng.dirichlet(np.ones(cluster_shift))])
 
     # Based on the distribution shift type, a shift is applied to the proportions of the clusters
     if distribution_shift_type == 'mild':
@@ -364,23 +357,15 @@ def generate_synthetic_batch(base_data, base_labels,
         cluster_data = clusters[cluster]
         cluster_client_labels = cluster_labels[cluster]
 
-        # Determine number of samples to draw
-        n_samples = int(len(cluster_data) * proportion * percentage)
-
         # Randomly sample with replacement if needed
-        try:
-            if n_samples > 0:
-                sampled_indices = rng.choice(
-                    len(cluster_data),
-                    size=n_samples,
-                    replace=False
-                )
-                new_batch_data.append(cluster_data[sampled_indices])
-                new_batch_labels.append(cluster_client_labels[sampled_indices])
-        except ValueError as e:
-            print(f"Error: {e}")
-            print(f"Cluster: {cluster}, Proportion: {proportion}, n_samples: {n_samples}")
-            breakpoint()
+        if n_samples > 0:
+            sampled_indices = rng.choice(
+                len(cluster_data),
+                size=min(n_samples, len(cluster_data)),
+                replace=False
+            )
+            new_batch_data.append(cluster_data[sampled_indices])
+            new_batch_labels.append(cluster_client_labels[sampled_indices])
 
     new_batch_data = np.vstack(new_batch_data)
     new_batch_labels = np.concatenate(new_batch_labels)

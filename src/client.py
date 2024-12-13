@@ -3,6 +3,8 @@ import numpy as np
 from sklearn.cluster import KMeans, MeanShift
 from scipy.spatial.distance import cdist
 
+import config
+
 class LocalClient:
     def __init__(self, client_id, data, n_clusters=None, clustering_method="kmeans", visualize=False):
         self.client_id = client_id
@@ -45,7 +47,7 @@ class LocalClient:
         self.model = model
         
     def _train_kmeans(self):
-        return KMeans(n_clusters=self.n_clusters, random_state=42)
+        return KMeans(n_clusters=self.n_clusters, random_state=42, max_iter=config.max_iterations_clustering)
 
     def _train_meanshift(self):
         return MeanShift()
@@ -70,7 +72,7 @@ class LocalClient:
 
     def retrain(self, global_centroids):
         # Initialize clustering with global centroids
-        model = KMeans(n_clusters=len(global_centroids), init=global_centroids, n_init=1, random_state=42)
+        model = KMeans(n_clusters=len(global_centroids), init=global_centroids, n_init=1, random_state=42, max_iter=config.max_iterations_clustering)
         model.fit(self.data)
         self.centroids = model.cluster_centers_
 

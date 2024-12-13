@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.spatial.distance import cdist
+from sklearn.cluster import MeanShift
 
 class ServerAggregator:
     def __init__(self, merging_threshold=1.0, visualize=False):
@@ -8,7 +9,7 @@ class ServerAggregator:
         self.merging_threshold = merging_threshold
         self.visualize = visualize
 
-    def aggregate(self, local_models):
+    def aggregate(self, local_models, method='pairwise'):
         # Collect all centroids and metadata
         all_centroids = []
         for centroids, metadata, _ in local_models:
@@ -17,8 +18,12 @@ class ServerAggregator:
 
         self.unmerged_centroids = all_centroids
 
-        # Merge clusters based on distance threshold
-        self.global_centroids = self._merge_centroids(all_centroids)
+        if method == 'pairwise':
+            # Merge clusters based on distance threshold
+            self.global_centroids = self._merge_centroids(all_centroids)
+        elif method == 'meanshift':
+            # Merge clusters using MeanShift clustering
+            self.global_centroids = self._merge_centroids_clustering(all_centroids)
 
     def _merge_centroids(self, centroids):
         # Hierarchical clustering or simple pairwise distance merging
@@ -42,3 +47,19 @@ class ServerAggregator:
             plt.show()
 
         return np.array(merged_centroids)
+
+    def _merge_centroids_clustering(self, centroids):
+        # Use MeanShift clustering to merge centroids
+        ms = MeanShift()
+        ms.fit(centroids)
+        merged_centroids = ms.cluster_centers_
+
+        if self.visualize:
+            plt.scatter(centroids[:, 0], centroids[:, 1], c='blue', s=50, alpha=0.5)
+            plt.scatter(merged_centroids[:, 0], merged_centroids[:, 1], c='red', s=100, alpha=0.5)
+            plt.title("Global Centroids")
+            plt.show()
+
+        return merged_centroids
+
+

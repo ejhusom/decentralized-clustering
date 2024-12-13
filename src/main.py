@@ -9,7 +9,7 @@ from server import ServerAggregator
 
 if __name__ == "__main__":
     # Create base dataset
-    base_data, base_labels = create_base_dataset(n_samples=1000, n_features=2, n_clusters=config.n_centers_generated, random_state=config.random_state)
+    base_data, base_labels = create_base_dataset(n_samples=config.n_samples, n_features=2, n_clusters=config.n_centers_generated, random_state=config.random_state)
     # Partition the data
     client_data, client_labels, cluster_distribution = partition_data(base_data, base_labels, n_clients=config.n_clients, max_clusters_per_client=config.n_centers_generated)
     # client_data, client_labels = mnist_clustering_experiment(n_clients=config.n_clients, n_features=config.n_features)
@@ -41,7 +41,7 @@ if __name__ == "__main__":
         client = LocalClient(i, client_data[i], n_clusters[i], clustering_method=clustering_methods[i], visualize=config.visualize)
         clients.append(client)
 
-    n_iterations = 10
+    n_iterations = config.n_iterations
 
     metrics = {"server": {"pre_aggregation": {"ari": [], "silhouette": []}, "post_aggregation": {"ari": [], "silhouette": []}}}
     for i in range(config.n_clients):
@@ -59,12 +59,13 @@ if __name__ == "__main__":
 
             local_models.append(client.get_model())
 
-        # (Optional) Evaluate global labels on local data
+        # (Optional) Evaluate local labels on local data
         for client in clients:
             ari, silhouette = evaluate_global_model(client.centroids, client.data, client.labels)
-            print(f"Client {client.client_id} - Local Labeling:")
-            print(f"Adjusted Rand Index: {ari}")
-            print(f"Silhouette Score: {silhouette}\n")
+            if config.verbose:
+                print(f"Client {client.client_id} - Local Labeling:")
+                print(f"Adjusted Rand Index: {ari}")
+                print(f"Silhouette Score: {silhouette}\n")
 
             metrics[f"client_{client.client_id}"]["local"]["ari"].append(ari)
             metrics[f"client_{client.client_id}"]["local"]["silhouette"].append(silhouette)
@@ -72,7 +73,7 @@ if __name__ == "__main__":
 
         # Aggregate at server
         server = ServerAggregator(merging_threshold=config.merging_threshold, visualize=False)
-        server.aggregate(local_models)
+        server.aggregate(local_models, method="pairwise")
 
         if config.visualize:
             plot_data_after_aggregation(clients, server)
@@ -81,16 +82,18 @@ if __name__ == "__main__":
         ari, silhouette = evaluate_global_model(server.unmerged_centroids, test_data, test_labels)
         metrics["server"]["pre_aggregation"]["ari"].append(ari)
         metrics["server"]["pre_aggregation"]["silhouette"].append(silhouette)
-        print("Unmerged Centroids:")
-        print(f"Adjusted Rand Index: {ari}")
-        print(f"Silhouette Score: {silhouette}\n")
+        if config.verbose:
+            print("Unmerged Centroids:")
+            print(f"Adjusted Rand Index: {ari}")
+            print(f"Silhouette Score: {silhouette}\n")
 
         ari, silhouette = evaluate_global_model(server.global_centroids, test_data, test_labels)
         metrics["server"]["post_aggregation"]["ari"].append(ari)
         metrics["server"]["post_aggregation"]["silhouette"].append(silhouette)
-        print("Merged Centroids:")
-        print(f"Adjusted Rand Index: {ari}")
-        print(f"Silhouette Score: {silhouette}\n")
+        if config.verbose:
+            print("Merged Centroids:")
+            print(f"Adjusted Rand Index: {ari}")
+            print(f"Silhouette Score: {silhouette}\n")
 
         # Distribute global centroids to clients
         global_centroids = server.global_centroids
@@ -105,9 +108,10 @@ if __name__ == "__main__":
             ari, silhouette = evaluate_global_model(global_centroids, client.data, client.global_labels)
             metrics[f"client_{client.client_id}"]["global"]["ari"].append(ari)
             metrics[f"client_{client.client_id}"]["global"]["silhouette"].append(silhouette)
-            print(f"Client {client.client_id} - Global Labeling:")
-            print(f"Adjusted Rand Index: {ari}")
-            print(f"Silhouette Score: {silhouette}\n")
+            if config.verbose:
+                print(f"Client {client.client_id} - Global Labeling:")
+                print(f"Adjusted Rand Index: {ari}")
+                print(f"Silhouette Score: {silhouette}\n")
 
         # Clients receive new data
         for i, client in enumerate(clients):
@@ -115,9 +119,9 @@ if __name__ == "__main__":
             new_batch_data, new_batch_labels = generate_synthetic_batch(
                 base_data=base_data,
                 base_labels=base_labels,
+                n_samples=int(config.n_samples_per_client * 0.1),
                 cluster_distribution=cluster_distribution[i],
-                distribution_shift_type='mild',
-                noise_level=0.2,
+                distribution_shift_type='significant',
                 random_state=42
             )
 
@@ -150,19 +154,52 @@ if __name__ == "__main__":
             client.labels = updated_labels
 
     # Plot the silhouette scores (not the ARI). There should be three subplots: One for the local silhouette scores, one for the global silhouette scores, and one for the server silhouette scores (pre- and post-aggregation).
-    print(metrics["client_0"]["local"]["silhouette"])
     fig, ax = plt.subplots(1, 3, figsize=(15, 5))
-    for client_id in range(config.n_clients):
-        ax[0].plot(metrics[f"client_{client_id}"]["local"]["silhouette"], label=f"Client {client_id} - Local")
-        ax[1].plot(metrics[f"client_{client_id}"]["global"]["silhouette"], label=f"Client {client_id} - Global")
-    ax[2].plot(metrics["server"]["pre_aggregation"]["silhouette"], label="Server - Pre-aggregation")
+    # for client_id in range(config.n_clients):
+    #     ax[0].plot(metrics[f"client_{client_id}"]["local"]["silhouette"], alpha=0.5)
+    #     ax[1].plot(metrics[f"client_{client_id}"]["global"]["silhouette"], alpha=0.5)
+    ax[2].plot(metrics["server"]["pre_aggregation"]["silhouette"], label="Server - Pre-aggregation", linestyle="--")
     ax[2].plot(metrics["server"]["post_aggregation"]["silhouette"], label="Server - Post-aggregation")
+
+    # Plot average silhouette scores
+    ax[0].plot(np.mean([metrics[f"client_{client_id}"]["local"]["silhouette"] for client_id in range(config.n_clients)], axis=0), label="Average Local", color="black")
+    ax[1].plot(np.mean([metrics[f"client_{client_id}"]["global"]["silhouette"] for client_id in range(config.n_clients)], axis=0), label="Average Global", color="black")
+
     ax[0].set_title("Local Silhouette Scores")
     ax[1].set_title("Global Silhouette Scores")
     ax[2].set_title("Server Silhouette Scores")
     ax[0].legend()
     ax[1].legend()
     ax[2].legend()
+    # Set equal y-axis limits for better comparison
+    ax[0].set_ylim([0, 1])
+    ax[1].set_ylim([0, 1])
+    ax[2].set_ylim([0, 1])
 
     plt.show()
 
+
+    # Plot the ARI scores. There should be three subplots: One for the local ARI scores, one for the global ARI scores, and one for the server ARI scores (pre- and post-aggregation).
+    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+    # for client_id in range(config.n_clients):
+    #     ax[0].plot(metrics[f"client_{client_id}"]["local"]["ari"], alpha=0.5)
+    #     ax[1].plot(metrics[f"client_{client_id}"]["global"]["ari"], alpha=0.5)
+    ax[2].plot(metrics["server"]["pre_aggregation"]["ari"], label="Server - Pre-aggregation", linestyle="--")
+    ax[2].plot(metrics["server"]["post_aggregation"]["ari"], label="Server - Post-aggregation")
+
+    # Plot average ARI scores
+    ax[0].plot(np.mean([metrics[f"client_{client_id}"]["local"]["ari"] for client_id in range(config.n_clients)], axis=0), label="Average Local", color="black", linestyle="--")
+    ax[1].plot(np.mean([metrics[f"client_{client_id}"]["global"]["ari"] for client_id in range(config.n_clients)], axis=0), label="Average Global", color="black", linestyle="--")
+
+    ax[0].set_title("Local ARI Scores")
+    ax[1].set_title("Global ARI Scores")
+    ax[2].set_title("Server ARI Scores")
+    ax[0].legend()
+    ax[1].legend()
+    ax[2].legend()
+    # Set equal y-axis limits for better comparison
+    ax[0].set_ylim([0, 1])
+    ax[1].set_ylim([0, 1])
+    ax[2].set_ylim([0, 1])
+
+    plt.show()
