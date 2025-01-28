@@ -8,6 +8,9 @@ from server import ServerAggregator
 
 
 if __name__ == "__main__":
+    # Define the metric to calculate
+    metric_to_calculate = "silhouette"
+
     # Create base dataset
     base_data, base_labels = create_base_dataset(n_samples=config.n_samples, n_features=2, n_clusters=config.n_centers_generated, random_state=config.random_state)
     # Partition the data
@@ -43,9 +46,27 @@ if __name__ == "__main__":
 
     n_iterations = config.n_iterations
 
-    metrics = {"server": {"pre_aggregation": {"ari": [], "silhouette": []}, "post_aggregation": {"ari": [], "silhouette": []}}}
+    # Create a dictionary with all the most common clustering metrics 
+    metrics = {
+        "server": {
+            "pre_aggregation": {
+                "silhouette": []
+            },
+            "post_aggregation": {
+                "silhouette": []
+            }
+        }
+    }
+
     for i in range(config.n_clients):
-        metrics[f"client_{i}"] = {"local": {"ari": [], "silhouette": []}, "global": {"ari": [], "silhouette": []}}
+        metrics[f"client_{i}"] = {
+            "local": {
+                "silhouette": []
+            },
+            "global": {
+                "silhouette": []
+            }
+        }
 
     for i in range(n_iterations):
 
@@ -61,15 +82,13 @@ if __name__ == "__main__":
 
         # (Optional) Evaluate local labels on local data
         for client in clients:
-            ari, silhouette = evaluate_global_model(client.centroids, client.data, client.labels)
+            results = evaluate_global_model(client.centroids, client.data, client.labels, metric=metric_to_calculate)
             if config.verbose:
                 print(f"Client {client.client_id} - Local Labeling:")
-                print(f"Adjusted Rand Index: {ari}")
-                print(f"Silhouette Score: {silhouette}\n")
+                print(f"Silhouette Score: {results['silhouette']}\n")
 
-            metrics[f"client_{client.client_id}"]["local"]["ari"].append(ari)
-            metrics[f"client_{client.client_id}"]["local"]["silhouette"].append(silhouette)
-
+            for metric, value in results.items():
+                metrics[f"client_{client.client_id}"]["local"][metric].append(value)
 
         # Aggregate at server
         server = ServerAggregator(merging_threshold=config.merging_threshold, visualize=False)
@@ -79,21 +98,19 @@ if __name__ == "__main__":
             plot_data_after_aggregation(clients, server)
 
         # Evaluate the global model
-        ari, silhouette = evaluate_global_model(server.unmerged_centroids, test_data, test_labels)
-        metrics["server"]["pre_aggregation"]["ari"].append(ari)
-        metrics["server"]["pre_aggregation"]["silhouette"].append(silhouette)
+        results_pre = evaluate_global_model(server.unmerged_centroids, test_data, test_labels, metric=metric_to_calculate)
+        for metric, value in results_pre.items():
+            metrics["server"]["pre_aggregation"][metric].append(value)
         if config.verbose:
             print("Unmerged Centroids:")
-            print(f"Adjusted Rand Index: {ari}")
-            print(f"Silhouette Score: {silhouette}\n")
+            print(f"Silhouette Score: {results_pre['silhouette']}\n")
 
-        ari, silhouette = evaluate_global_model(server.global_centroids, test_data, test_labels)
-        metrics["server"]["post_aggregation"]["ari"].append(ari)
-        metrics["server"]["post_aggregation"]["silhouette"].append(silhouette)
+        results_post = evaluate_global_model(server.global_centroids, test_data, test_labels, metric=metric_to_calculate)
+        for metric, value in results_post.items():
+            metrics["server"]["post_aggregation"][metric].append(value)
         if config.verbose:
             print("Merged Centroids:")
-            print(f"Adjusted Rand Index: {ari}")
-            print(f"Silhouette Score: {silhouette}\n")
+            print(f"Silhouette Score: {results_post['silhouette']}\n")
 
         # Distribute global centroids to clients
         global_centroids = server.global_centroids
@@ -105,13 +122,13 @@ if __name__ == "__main__":
 
         # (Optional) Evaluate global labels on local data
         for client in clients:
-            ari, silhouette = evaluate_global_model(global_centroids, client.data, client.global_labels)
-            metrics[f"client_{client.client_id}"]["global"]["ari"].append(ari)
-            metrics[f"client_{client.client_id}"]["global"]["silhouette"].append(silhouette)
+            results = evaluate_global_model(global_centroids, client.data, client.global_labels, metric=metric_to_calculate)
+            for metric, value in results.items():
+                metrics[f"client_{client.client_id}"]["global"][metric].append(value)
+
             if config.verbose:
                 print(f"Client {client.client_id} - Global Labeling:")
-                print(f"Adjusted Rand Index: {ari}")
-                print(f"Silhouette Score: {silhouette}\n")
+                print(f"Silhouette Score: {results['silhouette']}\n")
 
         # Clients receive new data
         for i, client in enumerate(clients):
@@ -153,7 +170,17 @@ if __name__ == "__main__":
             client.data = updated_data
             client.labels = updated_labels
 
-    # Plot the silhouette scores (not the ARI). There should be three subplots: One for the local silhouette scores, one for the global silhouette scores, and one for the server silhouette scores (pre- and post-aggregation).
+    # Save all metrics to a file with a timestamp
+    import json
+    import os
+    from datetime import datetime
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    os.makedirs("metrics", exist_ok=True)
+    with open(f"metrics/metrics_{timestamp}.json", "w") as f:
+        json.dump(metrics, f)
+
+    # Plot the silhouette scores. There should be three subplots: One for the local silhouette scores, one for the global silhouette scores, and one for the server silhouette scores (pre- and post-aggregation).
     fig, ax = plt.subplots(1, 3, figsize=(15, 5))
     # for client_id in range(config.n_clients):
     #     ax[0].plot(metrics[f"client_{client_id}"]["local"]["silhouette"], alpha=0.5)
@@ -187,19 +214,54 @@ if __name__ == "__main__":
     ax[2].plot(metrics["server"]["pre_aggregation"]["ari"], label="Server - Pre-aggregation", linestyle="--")
     ax[2].plot(metrics["server"]["post_aggregation"]["ari"], label="Server - Post-aggregation")
 
-    # Plot average ARI scores
-    ax[0].plot(np.mean([metrics[f"client_{client_id}"]["local"]["ari"] for client_id in range(config.n_clients)], axis=0), label="Average Local", color="black", linestyle="--")
-    ax[1].plot(np.mean([metrics[f"client_{client_id}"]["global"]["ari"] for client_id in range(config.n_clients)], axis=0), label="Average Global", color="black", linestyle="--")
+    # # Plot average ARI scores
+    # ax[0].plot(np.mean([metrics[f"client_{client_id}"]["local"]["ari"] for client_id in range(config.n_clients)], axis=0), label="Average Local", color="black", linestyle="--")
+    # ax[1].plot(np.mean([metrics[f"client_{client_id}"]["global"]["ari"] for client_id in range(config.n_clients)], axis=0), label="Average Global", color="black", linestyle="--")
 
-    ax[0].set_title("Local ARI Scores")
-    ax[1].set_title("Global ARI Scores")
-    ax[2].set_title("Server ARI Scores")
-    ax[0].legend()
-    ax[1].legend()
-    ax[2].legend()
-    # Set equal y-axis limits for better comparison
-    ax[0].set_ylim([0, 1])
-    ax[1].set_ylim([0, 1])
-    ax[2].set_ylim([0, 1])
+    # ax[0].set_title("Local ARI Scores")
+    # ax[1].set_title("Global ARI Scores")
+    # ax[2].set_title("Server ARI Scores")
+    # ax[0].legend()
+    # ax[1].legend()
+    # ax[2].legend()
+    # # Set equal y-axis limits for better comparison
+    # ax[0].set_ylim([0, 1])
+    # ax[1].set_ylim([0, 1])
+    # ax[2].set_ylim([0, 1])
 
-    plt.show()
+    # plt.show()
+
+    # try:
+    #     # Plot all the various metrics, one plot for the local metrics, one for the global metrics, and one for the server metrics (pre- and post-aggregation). Be sure to make the plots readable and understandable.
+
+    #     # Substitute None values with 0
+    #     for metric in metrics:
+    #         for key in metrics[metric]:
+    #             for sub_key in metrics[metric][key]:
+    #                 metrics[metric][key][sub_key] = [0 if x is None else x for x in metrics[metric][key][sub_key]]
+
+        
+    #     fig, ax = plt.subplots(3, 3, figsize=(15, 15))
+    #     metrics_list = ["ari", "silhouette", "mutual_info", "fowlkes_mallows", "calinski_harabasz", "davies_bouldin", "completeness", "homogeneity", "v_measure"]
+    #     for i, metric in enumerate(metrics_list):
+    #         row = i // 3
+    #         col = i % 3
+    #         # for client_id in range(config.n_clients):
+    #         #     ax[row, col].plot(metrics[f"client_{client_id}"]["local"][metric], alpha=0.5)
+    #         #     ax[row, col].plot(metrics[f"client_{client_id}"]["global"][metric], alpha=0.5)
+    #         ax[row, col].plot(metrics["server"]["pre_aggregation"][metric], label="Server - Pre-aggregation", linestyle="--")
+    #         ax[row, col].plot(metrics["server"]["post_aggregation"][metric], label="Server - Post-aggregation")
+
+    #         # Plot average scores
+    #         ax[row, col].plot(np.mean([metrics[f"client_{client_id}"]["local"][metric] for client_id in range(config.n_clients)], axis=0), label="Average Local", color="black", linestyle="--")
+    #         ax[row, col].plot(np.mean([metrics[f"client_{client_id}"]["global"][metric] for client_id in range(config.n_clients)], axis=0), label="Average Global", color="black", linestyle="--")
+
+    #         ax[row, col].set_title(f"{metric.capitalize()} Scores")
+    #         ax[row, col].legend()
+    #         # Set equal y-axis limits for better comparison
+    #         ax[row, col].set_ylim([0, 1])
+
+    #     plt.tight_layout()
+    #     plt.show()
+    # except Exception as e:
+    #     breakpoint()

@@ -1,4 +1,3 @@
-from sklearn.metrics import silhouette_score, adjusted_rand_score
 from scipy.spatial.distance import cdist
 from sklearn.datasets import make_blobs
 import matplotlib.pyplot as plt
@@ -8,7 +7,7 @@ import config
 from sklearn.datasets import fetch_openml
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
-from sklearn.metrics import adjusted_rand_score, silhouette_score
+from sklearn.metrics import adjusted_rand_score, silhouette_score, mutual_info_score, fowlkes_mallows_score, calinski_harabasz_score, davies_bouldin_score, completeness_score, homogeneity_score, v_measure_score
 
 def load_and_preprocess_mnist(n_samples=10000, n_components=50):
     """
@@ -133,20 +132,43 @@ def generate_synthetic_data(n_clients=5, n_samples_per_client=100, n_centers=3, 
         data.append(X)
     return data
 
-def evaluate_global_model(global_centroids, test_data, test_labels):
+def evaluate_global_model(global_centroids, test_data, test_labels, metric="all"):
     # Assign test points to nearest global centroids
     distances = cdist(test_data, global_centroids)
     predicted_labels = np.argmin(distances, axis=1)
 
-    # Compute evaluation metrics
-    ari = adjusted_rand_score(test_labels, predicted_labels)
-    if len(set(predicted_labels)) < 2:
-        silhouette = None
-        print("Only one predicted label; not possible to compute silhouette score.")
-    else:
-        silhouette = silhouette_score(test_data, predicted_labels)
+    # Define all possible metrics
+    all_metrics = {
+        "ari": adjusted_rand_score,
+        "mutual_info": mutual_info_score,
+        "fowlkes_mallows": fowlkes_mallows_score,
+        "completeness": completeness_score,
+        "homogeneity": homogeneity_score,
+        "v_measure": v_measure_score,
+        "silhouette": silhouette_score,
+        "calinski_harabasz": calinski_harabasz_score,
+        "davies_bouldin": davies_bouldin_score
+    }
 
-    return ari, silhouette
+    # Determine which metrics to compute
+    if metric == "all":
+        metrics_to_compute = all_metrics
+    else:
+        metrics_to_compute = {metric: all_metrics[metric]}
+
+    # Compute metrics
+    results = {}
+    for name, func in metrics_to_compute.items():
+        if name in ["silhouette", "calinski_harabasz", "davies_bouldin"]:
+            if len(set(predicted_labels)) < 2:
+                results[name] = None
+                print(f"Warning: Cannot compute {name} score with a single cluster")
+            else:
+                results[name] = func(test_data, predicted_labels)
+        else:
+            results[name] = func(test_labels, predicted_labels)
+
+    return results
 
 def create_base_dataset(n_samples, n_features, n_clusters, random_state=42):
     X, y = make_blobs(
