@@ -9,6 +9,38 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.metrics import adjusted_rand_score, silhouette_score, mutual_info_score, fowlkes_mallows_score, calinski_harabasz_score, davies_bouldin_score, completeness_score, homogeneity_score, v_measure_score
 
+from scipy.optimize import linear_sum_assignment
+from sklearn.metrics import silhouette_score
+import numpy as np
+
+def cluster_recall(global_centroids, true_centers, threshold=1.0):
+    """Percentage of true clusters detected by global model"""
+    dist_matrix = cdist(global_centroids, true_centers)
+    min_distances = np.min(dist_matrix, axis=0)
+    return np.mean(min_distances < threshold)
+
+def cluster_purity(global_centroids, test_data, test_labels):
+    """Purity of global clusters relative to ground truth"""
+    assigned_labels = np.argmin(cdist(test_data, global_centroids), axis=1)
+    
+    # Compute contingency matrix
+    contingency = np.zeros((len(global_centroids), len(np.unique(test_labels))))
+    for i, j in zip(assigned_labels, test_labels):
+        contingency[i, j] += 1
+    
+    # Optimal label matching
+    row_ind, col_ind = linear_sum_assignment(-contingency)
+    correct = contingency[row_ind, col_ind].sum()
+    return correct / len(test_data)
+
+def adaptation_latency(history, new_cluster_id, threshold=1.0):
+    """Iterations needed to detect newly introduced cluster"""
+    for i, centroids in enumerate(history['global_centroids']):
+        dists = cdist(centroids, [true_centers[new_cluster_id]])
+        if np.any(dists < threshold):
+            return i
+    return np.inf
+
 def load_and_preprocess_mnist(n_samples=10000, n_components=50):
     """
     Load MNIST dataset and preprocess for clustering

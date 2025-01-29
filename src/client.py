@@ -29,14 +29,23 @@ class LocalClient:
             raise ValueError("Meanshift does not require n_clusters. Please set n_clusters=None")
 
     def train(self):
-        if self.clustering_method == "kmeans":
-            model = self._train_kmeans()
+        # For MeanShift clients, auto-set bandwidth
+        if self.clustering_method == "meanshift":
+            from sklearn.cluster import estimate_bandwidth
+            bandwidth = estimate_bandwidth(self.data, quantile=0.2)
+            model = MeanShift(bandwidth=bandwidth)
+        # For KMeans, use better initialization
+        elif "kmeans" in self.clustering_method:
+            model = KMeans(n_clusters=self.n_clusters, 
+                        init='k-means++',  # Better than random
+                        n_init=10,
+                        max_iter=config.max_iterations_clustering)
         elif self.clustering_method == "mini_batch_kmeans":
-            model = self._train_mini_batch_kmeans()
-        elif self.clustering_method == "meanshift":
-            model = self._train_meanshift()
-        # elif self.clustering_method == "kmedoids":
-        #     model = self._train_kmedoids()
+            model = MiniBatchKMeans(n_clusters=self.n_clusters, 
+                        init='k-means++',  # Better than random
+                        n_init=10,
+                        max_iter=config.max_iterations_clustering)
+                                   
 
         model.fit(self.data)
         self.labels = model.labels_
@@ -68,19 +77,6 @@ class LocalClient:
 
         self.model = model
         
-    def _train_kmeans(self):
-        return KMeans(n_clusters=self.n_clusters, random_state=42, max_iter=config.max_iterations_clustering)
-
-    def _train_mini_batch_kmeans(self):
-        return MiniBatchKMeans(n_clusters=self.n_clusters, random_state=42, max_iter=config.max_iterations_clustering)
-
-    def _train_meanshift(self):
-        return MeanShift()
-
-    # def _train_kmedoids(self):
-        # return KMedoids(n_clusters=self.n_clusters, random_state=42, max_iter=config.max_iterations_clustering)
-        # return kmedoids.KMedoids(n_clusters=self.n_clusters, random_state=42, max_iter=config.max_iterations_clustering)
-
     def get_model(self):
         return self.centroids, self.metadata, self.model
 

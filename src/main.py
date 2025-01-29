@@ -2,23 +2,147 @@ import config
 import numpy as np
 
 import matplotlib.pyplot as plt
-from utils import generate_synthetic_data, create_base_dataset, partition_data, plot_data, sample_test_data, evaluate_global_model, mnist_clustering_experiment, plot_data_after_aggregation, generate_synthetic_batch, append_client_data
+from utils import generate_synthetic_data, create_base_dataset, partition_data, plot_data, sample_test_data, evaluate_global_model, mnist_clustering_experiment, plot_data_after_aggregation, generate_synthetic_batch, append_client_data, cluster_recall, cluster_purity
 from client import LocalClient
 from server import ServerAggregator
+from sklearn.metrics import silhouette_score
+from sklearn.metrics import adjusted_rand_score
+from sklearn.metrics import recall_score
+from sklearn.metrics import precision_score
+from sklearn.metrics import f1_score
+from sklearn.model_selection import train_test_split
+from scipy.spatial.distance import cdist
 
+from plot_metrics import plot_metrics
+from baselines import CentralizedBaseline
+from server_fedkmeans import FedKMeansAggregator
+from server_fedms import FedMeanShiftAggregator
+
+def run_baseline_experiment(client_data, test_data, test_labels, true_centers, method='centralized'):
+    """Run baseline experiments with proper parameter handling"""
+    if method == 'centralized':
+        # Centralized KMeans (oracle baseline)
+        from sklearn.cluster import KMeans
+        all_data = np.vstack([c_data for c_data in client_data])
+        model = KMeans(n_clusters=len(true_centers), random_state=42)
+        model.fit(all_data)
+        centroids = model.cluster_centers_
+        
+    elif method == 'fedkmeans':
+        # Federated KMeans with fixed cluster count
+        from server import ServerAggregator
+        server = ServerAggregator(merging_threshold=config.merging_threshold)
+        clients = []
+        
+        # Create clients with true cluster count
+        for i, data in enumerate(client_data):
+            client = LocalClient(
+                client_id=i,
+                data=data,
+                n_clusters=len(true_centers),  # Force true cluster count
+                clustering_method="kmeans",
+            )
+            client.train()
+            clients.append(client)
+            
+        # Aggregate centroids
+        local_models = [client.get_model() for client in clients]
+        centroids = server.aggregate(local_models, method='pairwise')
+        
+    elif method == 'fedms':
+        # Federated MeanShift baseline
+        from server import ServerAggregator
+        server = ServerAggregator(merging_threshold=config.merging_threshold)
+        clients = []
+        
+        for i, data in enumerate(client_data):
+            client = LocalClient(
+                client_id=i,
+                data=data,
+                n_clusters=None,  # MeanShift auto-detection
+                clustering_method="meanshift",
+            )
+            client.train()
+            clients.append(client)
+            
+        local_models = [client.get_model() for client in clients]
+        centroids = server.aggregate(local_models, method='meanshift')
+        
+    else:
+        raise ValueError(f"Unknown baseline method: {method}")
+
+    # Calculate metrics
+    from utils import cluster_recall, cluster_purity
+    pred_labels = np.argmin(cdist(test_data, centroids), axis=1)
+    
+    return {
+        'silhouette': silhouette_score(test_data, pred_labels),
+        'recall': cluster_recall(centroids, true_centers, threshold=1.5),
+        'purity': cluster_purity(centroids, test_data, test_labels)
+    }
 
 if __name__ == "__main__":
     # Define the metric to calculate
     metric_to_calculate = "silhouette"
 
-    # Create base dataset
-    base_data, base_labels = create_base_dataset(n_samples=config.n_samples, n_features=2, n_clusters=config.n_centers_generated, random_state=config.random_state)
-    # Partition the data
-    client_data, client_labels, cluster_distribution = partition_data(base_data, base_labels, n_clients=config.n_clients, max_clusters_per_client=config.n_centers_generated)
-    # client_data, client_labels = mnist_clustering_experiment(n_clients=config.n_clients, n_features=config.n_features)
+    # Generate base data
+    base_data, base_labels = create_base_dataset(
+        n_samples=config.n_samples,
+        n_features=config.n_features,
+        n_clusters=config.n_centers_generated,
+        random_state=config.random_state
+    )
+
+    # Split test data BEFORE client partitioning
+    base_data, test_data, base_labels, test_labels = train_test_split(
+        base_data, base_labels, 
+        test_size=0.2,
+        random_state=config.random_state
+    )
+
+    # Calculate true cluster centers from BASE DATA (not test data)
+    true_centers = np.array([
+        np.mean(base_data[base_labels == i], axis=0) 
+        for i in np.unique(base_labels)
+    ])
+
+    # Now partition the remaining data to clients
+    client_data, client_labels, cluster_distribution = partition_data(
+        base_data, base_labels, 
+        n_clients=config.n_clients,
+        max_clusters_per_client=4
+    )
 
     # Sample test data
     test_data, test_labels = sample_test_data(base_data, base_labels, test_size=0.2)
+
+    true_centers = np.array([np.mean(base_data[base_labels == i], axis=0) 
+                       for i in np.unique(base_labels)])
+
+    # After test data generation
+    baseline_results = {}
+
+    # Centralized baseline
+    baseline_results['centralized'] = run_baseline_experiment(
+        client_data, test_data, test_labels, true_centers, method='centralized'
+    )
+
+    # Federated KMeans baseline
+    baseline_results['fedkmeans'] = run_baseline_experiment(
+        client_data, test_data, test_labels, true_centers, method='fedkmeans'
+    )
+
+    # Federated MeanShift baseline
+    baseline_results['fedms'] = run_baseline_experiment(
+        client_data, test_data, test_labels, true_centers, method='fedms'
+    )
+
+    # Your FALC results
+    falcon_results = {
+        'silhouette': [],
+        'recall': [],
+        'purity': []
+    }
 
     if config.visualize:
         # Plot the data
@@ -92,9 +216,10 @@ if __name__ == "__main__":
 
         # Aggregate at server
         server = ServerAggregator(
-            merging_threshold=config.merging_threshold,
+            merging_threshold=4.0,
             visualize=False,
-            density_aware=config.density_aware_merging 
+            use_dynamic_threshold=config.use_dynamic_threshold,
+            use_weighted_merging=config.use_weighted_merging
         )
         # server.aggregate(local_models, method="pairwise")
         server.aggregate(local_models, method="meanshift")
@@ -113,6 +238,9 @@ if __name__ == "__main__":
         results_post = evaluate_global_model(server.global_centroids, test_data, test_labels, metric=metric_to_calculate)
         for metric, value in results_post.items():
             metrics["server"]["post_aggregation"][metric].append(value)
+        falcon_results['silhouette'].append(results_post['silhouette'])
+        falcon_results['recall'].append(cluster_recall(server.global_centroids, true_centers))
+        falcon_results['purity'].append(cluster_purity(server.global_centroids, test_data, test_labels))
         if config.verbose:
             print("Merged Centroids:")
             print(f"Silhouette Score: {results_post['silhouette']}\n")
@@ -223,3 +351,5 @@ if __name__ == "__main__":
     # #     ax[1].plot(metrics[f"client_{client_id}"]["global"]["ari"], alpha=0.5)
     # ax[2].plot(metrics["server"]["pre_aggregation"]["ari"], label="Server - Pre-aggregation", linestyle="--")
     # ax[2].plot(metrics["server"]["post_aggregation"]["ari"], label="Server - Post-aggregation")
+
+    plot_metrics(baseline_results, falcon_results)
