@@ -91,7 +91,11 @@ if __name__ == "__main__":
                 metrics[f"client_{client.client_id}"]["local"][metric].append(value)
 
         # Aggregate at server
-        server = ServerAggregator(merging_threshold=config.merging_threshold, visualize=False)
+        server = ServerAggregator(
+            merging_threshold=config.merging_threshold,
+            visualize=False,
+            density_aware=config.density_aware_merging 
+        )
         server.aggregate(local_models, method="pairwise")
 
         if config.visualize:
@@ -180,6 +184,12 @@ if __name__ == "__main__":
     with open(f"metrics/metrics_{timestamp}.json", "w") as f:
         json.dump(metrics, f)
 
+    # Substitue None values with 0
+    for key, value in metrics.items():
+        for sub_key, sub_value in value.items():
+            for metric, metric_values in sub_value.items():
+                metrics[key][sub_key][metric] = [0 if v is None else v for v in metric_values]
+
     # Plot the silhouette scores. There should be three subplots: One for the local silhouette scores, one for the global silhouette scores, and one for the server silhouette scores (pre- and post-aggregation).
     fig, ax = plt.subplots(1, 3, figsize=(15, 5))
     # for client_id in range(config.n_clients):
@@ -205,7 +215,6 @@ if __name__ == "__main__":
 
     plt.show()
 
-
     # Plot the ARI scores. There should be three subplots: One for the local ARI scores, one for the global ARI scores, and one for the server ARI scores (pre- and post-aggregation).
     fig, ax = plt.subplots(1, 3, figsize=(15, 5))
     # for client_id in range(config.n_clients):
@@ -213,55 +222,3 @@ if __name__ == "__main__":
     #     ax[1].plot(metrics[f"client_{client_id}"]["global"]["ari"], alpha=0.5)
     ax[2].plot(metrics["server"]["pre_aggregation"]["ari"], label="Server - Pre-aggregation", linestyle="--")
     ax[2].plot(metrics["server"]["post_aggregation"]["ari"], label="Server - Post-aggregation")
-
-    # # Plot average ARI scores
-    # ax[0].plot(np.mean([metrics[f"client_{client_id}"]["local"]["ari"] for client_id in range(config.n_clients)], axis=0), label="Average Local", color="black", linestyle="--")
-    # ax[1].plot(np.mean([metrics[f"client_{client_id}"]["global"]["ari"] for client_id in range(config.n_clients)], axis=0), label="Average Global", color="black", linestyle="--")
-
-    # ax[0].set_title("Local ARI Scores")
-    # ax[1].set_title("Global ARI Scores")
-    # ax[2].set_title("Server ARI Scores")
-    # ax[0].legend()
-    # ax[1].legend()
-    # ax[2].legend()
-    # # Set equal y-axis limits for better comparison
-    # ax[0].set_ylim([0, 1])
-    # ax[1].set_ylim([0, 1])
-    # ax[2].set_ylim([0, 1])
-
-    # plt.show()
-
-    # try:
-    #     # Plot all the various metrics, one plot for the local metrics, one for the global metrics, and one for the server metrics (pre- and post-aggregation). Be sure to make the plots readable and understandable.
-
-    #     # Substitute None values with 0
-    #     for metric in metrics:
-    #         for key in metrics[metric]:
-    #             for sub_key in metrics[metric][key]:
-    #                 metrics[metric][key][sub_key] = [0 if x is None else x for x in metrics[metric][key][sub_key]]
-
-        
-    #     fig, ax = plt.subplots(3, 3, figsize=(15, 15))
-    #     metrics_list = ["ari", "silhouette", "mutual_info", "fowlkes_mallows", "calinski_harabasz", "davies_bouldin", "completeness", "homogeneity", "v_measure"]
-    #     for i, metric in enumerate(metrics_list):
-    #         row = i // 3
-    #         col = i % 3
-    #         # for client_id in range(config.n_clients):
-    #         #     ax[row, col].plot(metrics[f"client_{client_id}"]["local"][metric], alpha=0.5)
-    #         #     ax[row, col].plot(metrics[f"client_{client_id}"]["global"][metric], alpha=0.5)
-    #         ax[row, col].plot(metrics["server"]["pre_aggregation"][metric], label="Server - Pre-aggregation", linestyle="--")
-    #         ax[row, col].plot(metrics["server"]["post_aggregation"][metric], label="Server - Post-aggregation")
-
-    #         # Plot average scores
-    #         ax[row, col].plot(np.mean([metrics[f"client_{client_id}"]["local"][metric] for client_id in range(config.n_clients)], axis=0), label="Average Local", color="black", linestyle="--")
-    #         ax[row, col].plot(np.mean([metrics[f"client_{client_id}"]["global"][metric] for client_id in range(config.n_clients)], axis=0), label="Average Global", color="black", linestyle="--")
-
-    #         ax[row, col].set_title(f"{metric.capitalize()} Scores")
-    #         ax[row, col].legend()
-    #         # Set equal y-axis limits for better comparison
-    #         ax[row, col].set_ylim([0, 1])
-
-    #     plt.tight_layout()
-    #     plt.show()
-    # except Exception as e:
-    #     breakpoint()

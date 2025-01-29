@@ -56,7 +56,8 @@ class LocalClient:
 
         self.metadata = {
             "weights": np.bincount(model.labels_),
-            "variance": [np.var(self.data[model.labels_ == i], axis=0) for i in range(self.n_clusters)],
+            "variance": [np.mean(np.var(self.data[model.labels_ == i], axis=0))  # Scalar variance
+                        for i in range(self.n_clusters)],
         }
 
         if self.visualize:
