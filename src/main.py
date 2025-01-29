@@ -96,7 +96,8 @@ if __name__ == "__main__":
             visualize=False,
             density_aware=config.density_aware_merging 
         )
-        server.aggregate(local_models, method="pairwise")
+        # server.aggregate(local_models, method="pairwise")
+        server.aggregate(local_models, method="meanshift")
 
         if config.visualize:
             plot_data_after_aggregation(clients, server)
@@ -215,10 +216,10 @@ if __name__ == "__main__":
 
     plt.show()
 
-    # Plot the ARI scores. There should be three subplots: One for the local ARI scores, one for the global ARI scores, and one for the server ARI scores (pre- and post-aggregation).
-    fig, ax = plt.subplots(1, 3, figsize=(15, 5))
-    # for client_id in range(config.n_clients):
-    #     ax[0].plot(metrics[f"client_{client_id}"]["local"]["ari"], alpha=0.5)
-    #     ax[1].plot(metrics[f"client_{client_id}"]["global"]["ari"], alpha=0.5)
-    ax[2].plot(metrics["server"]["pre_aggregation"]["ari"], label="Server - Pre-aggregation", linestyle="--")
-    ax[2].plot(metrics["server"]["post_aggregation"]["ari"], label="Server - Post-aggregation")
+    # # Plot the ARI scores. There should be three subplots: One for the local ARI scores, one for the global ARI scores, and one for the server ARI scores (pre- and post-aggregation).
+    # fig, ax = plt.subplots(1, 3, figsize=(15, 5))
+    # # for client_id in range(config.n_clients):
+    # #     ax[0].plot(metrics[f"client_{client_id}"]["local"]["ari"], alpha=0.5)
+    # #     ax[1].plot(metrics[f"client_{client_id}"]["global"]["ari"], alpha=0.5)
+    # ax[2].plot(metrics["server"]["pre_aggregation"]["ari"], label="Server - Pre-aggregation", linestyle="--")
+    # ax[2].plot(metrics["server"]["post_aggregation"]["ari"], label="Server - Post-aggregation")

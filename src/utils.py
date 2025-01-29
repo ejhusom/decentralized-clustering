@@ -459,8 +459,8 @@ def plot_data(base_data, base_labels, client_data):
     plt.xlim(-lim, lim)
     plt.ylim(-lim, lim)
     # colormap = plt.cm.get_cmap("tab10", len(client_data))
-    colormap = ["red", "blue", "green", "orange", "purple", "brown", "pink", "gray", "olive", "cyan"]
-    symbols = ["o", "s", "D", "v", "^", ">", "<", "p", "P", "*"]
+    colormap = ["red", "blue", "green", "orange", "purple", "brown", "pink", "gray", "olive", "cyan"] * 100
+    symbols = ["o", "s", "D", "v", "^", ">", "<", "p", "P", "*"] * 100
     for i, data in enumerate(client_data):
         # print(f"Client {i} has {len(data)} samples, color: {colormap[i]}, marker: {symbols[i]}")
         plt.scatter(data[:, 0], data[:, 1], alpha=0.3, c=colormap[i], marker=symbols[i])

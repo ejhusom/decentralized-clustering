@@ -77,9 +77,9 @@ class LocalClient:
     def _train_meanshift(self):
         return MeanShift()
 
-    def _train_kmedoids(self):
+    # def _train_kmedoids(self):
         # return KMedoids(n_clusters=self.n_clusters, random_state=42, max_iter=config.max_iterations_clustering)
-        return kmedoids.KMedoids(n_clusters=self.n_clusters, random_state=42, max_iter=config.max_iterations_clustering)
+        # return kmedoids.KMedoids(n_clusters=self.n_clusters, random_state=42, max_iter=config.max_iterations_clustering)
 
     def get_model(self):
         return self.centroids, self.metadata, self.model
