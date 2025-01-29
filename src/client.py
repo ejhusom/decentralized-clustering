@@ -1,12 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.cluster import KMeans, MeanShift, MiniBatchKMeans
+from sklearn.cluster import KMeans, MeanShift
 from scipy.spatial.distance import cdist
-# from sklearn_extra.cluster import KMedoids
-# import kmedoids
-from sklearn.neighbors import NearestCentroid
 
-import config
+import parameters
 
 class LocalClient:
     def __init__(self, client_id, data, n_clusters=None, clustering_method="kmeans", visualize=False):
@@ -20,53 +17,25 @@ class LocalClient:
         self.model = None
         self.visualize = visualize
 
-        # if self.clustering_method not in ["kmeans", "mini_batch_kmeans", "meanshift", "kmedoids"]:
-        if self.clustering_method not in ["kmeans", "mini_batch_kmeans", "meanshift"]:
-            # raise ValueError("Invalid clustering method. Supported methods: ['kmeans', 'mini_batch_kmeans', 'meanshift', 'kmedoids']")
-            raise ValueError("Invalid clustering method. Supported methods: ['kmeans', 'mini_batch_kmeans', 'meanshift']")
+        if self.clustering_method not in ["kmeans", "meanshift"]:
+            raise ValueError("Invalid clustering method. Supported methods: ['kmeans',, 'meanshift']")
 
         if self.clustering_method in ["meanshift"] and self.n_clusters is not None:
             raise ValueError("Meanshift does not require n_clusters. Please set n_clusters=None")
 
     def train(self):
-        # For MeanShift clients, auto-set bandwidth
-        if self.clustering_method == "meanshift":
-            from sklearn.cluster import estimate_bandwidth
-            bandwidth = estimate_bandwidth(self.data, quantile=0.2)
-            model = MeanShift(bandwidth=bandwidth)
-        # For KMeans, use better initialization
-        elif "kmeans" in self.clustering_method:
-            model = KMeans(n_clusters=self.n_clusters, 
-                        init='k-means++',  # Better than random
-                        n_init=10,
-                        max_iter=config.max_iterations_clustering)
-        elif self.clustering_method == "mini_batch_kmeans":
-            model = MiniBatchKMeans(n_clusters=self.n_clusters, 
-                        init='k-means++',  # Better than random
-                        n_init=10,
-                        max_iter=config.max_iterations_clustering)
-                                   
+        if self.clustering_method == "kmeans":
+            model = self._train_kmeans()
+        elif self.clustering_method == "meanshift":
+            model = self._train_meanshift()
 
         model.fit(self.data)
+        self.centroids = model.cluster_centers_
         self.labels = model.labels_
-        self.n_clusters = len(np.unique(model.labels_))
-
-        # If cluster centroids are not defined by the model, calculate the centroids using NearestCentroid and the labels
-        try:
-            self.centroids = model.cluster_centers_
-            # manual_centroids = np.array([np.mean(self.data[model.labels_ == i], axis=0) for i in range(self.n_clusters)])
-            # clf = NearestCentroid()
-            # clf.fit(self.data, model.labels_)
-            # print(self.centroids)
-            # print(manual_centroids)
-            # print(clf.centroids_)
-        except AttributeError:
-            self.centroids = np.array([np.mean(self.data[model.labels_ == i], axis=0) for i in range(self.n_clusters)])
-
+        self.n_clusters = len(self.centroids)
         self.metadata = {
             "weights": np.bincount(model.labels_),
-            "variance": [np.mean(np.var(self.data[model.labels_ == i], axis=0))  # Scalar variance
-                        for i in range(self.n_clusters)],
+            "variance": [np.var(self.data[model.labels_ == i], axis=0) for i in range(self.n_clusters)],
         }
 
         if self.visualize:
@@ -77,6 +46,12 @@ class LocalClient:
 
         self.model = model
         
+    def _train_kmeans(self):
+        return KMeans(n_clusters=self.n_clusters, random_state=42, max_iter=parameters.max_iterations_clustering)
+
+    def _train_meanshift(self):
+        return MeanShift()
+
     def get_model(self):
         return self.centroids, self.metadata, self.model
 
@@ -96,19 +71,18 @@ class LocalClient:
         return global_labels
 
     def retrain(self, global_centroids):
-        # Initialize clustering with global centroids
         if self.clustering_method == "kmeans":
-            model = KMeans(n_clusters=len(global_centroids), init=global_centroids, n_init=1, random_state=42, max_iter=config.max_iterations_clustering)
-        elif self.clustering_method == "mini_batch_kmeans":
-            model = MiniBatchKMeans(n_clusters=len(global_centroids), init=global_centroids, n_init=1, random_state=42, max_iter=config.max_iterations_clustering)
+            # Check if n_samples in self.data is less than n_clusters, and if so, reduce n_clusters
+            if len(self.data) < len(global_centroids):
+                print("Not enough samples to retrain using global centroids. Reducing n_clusters.")
+                model = KMeans(n_clusters=len(self.centroids), init=self.centroids, n_init=1, random_state=42, max_iter=parameters.max_iterations_clustering)
+                model.fit(self.data)
+                self.centroids = model.cluster_centers_
+            else:
+                # Initialize clustering with global centroids
+                model = KMeans(n_clusters=len(global_centroids), init=global_centroids, n_init=1, random_state=42, max_iter=parameters.max_iterations_clustering)
         elif self.clustering_method == "meanshift":
             model = MeanShift(seeds=global_centroids)
-        # elif self.clustering_method == "kmedoids":
-            # model = KMedoids(n_clusters=len(global_centroids), init=global_centroids, n_init=1, random_state=42, max_iter=config.max_iterations_clustering)
-            # model = kmedoids.KMedoids(n_clusters=len(global_centroids), init=global_centroids, n_init=1, random_state=42, max_iter=config.max_iterations_clustering)
-        else:
-            print("Only KMeans and MeanShift are supported for retraining, falling back to KMeans")
-            model = KMeans(n_clusters=len(global_centroids), init=global_centroids, n_init=1, random_state=42, max_iter=config.max_iterations_clustering)
 
         model.fit(self.data)
         self.centroids = model.cluster_centers_

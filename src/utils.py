@@ -1,45 +1,14 @@
+from sklearn.metrics import silhouette_score, adjusted_rand_score
 from scipy.spatial.distance import cdist
 from sklearn.datasets import make_blobs
 import matplotlib.pyplot as plt
 import numpy as np
-import config
+import parameters
 
 from sklearn.datasets import fetch_openml
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
-from sklearn.metrics import adjusted_rand_score, silhouette_score, mutual_info_score, fowlkes_mallows_score, calinski_harabasz_score, davies_bouldin_score, completeness_score, homogeneity_score, v_measure_score
-
-from scipy.optimize import linear_sum_assignment
-from sklearn.metrics import silhouette_score
-import numpy as np
-
-def cluster_recall(global_centroids, true_centers, threshold=1.0):
-    """Percentage of true clusters detected by global model"""
-    dist_matrix = cdist(global_centroids, true_centers)
-    min_distances = np.min(dist_matrix, axis=0)
-    return np.mean(min_distances < threshold)
-
-def cluster_purity(global_centroids, test_data, test_labels):
-    """Purity of global clusters relative to ground truth"""
-    assigned_labels = np.argmin(cdist(test_data, global_centroids), axis=1)
-    
-    # Compute contingency matrix
-    contingency = np.zeros((len(global_centroids), len(np.unique(test_labels))))
-    for i, j in zip(assigned_labels, test_labels):
-        contingency[i, j] += 1
-    
-    # Optimal label matching
-    row_ind, col_ind = linear_sum_assignment(-contingency)
-    correct = contingency[row_ind, col_ind].sum()
-    return correct / len(test_data)
-
-def adaptation_latency(history, new_cluster_id, threshold=1.0):
-    """Iterations needed to detect newly introduced cluster"""
-    for i, centroids in enumerate(history['global_centroids']):
-        dists = cdist(centroids, [true_centers[new_cluster_id]])
-        if np.any(dists < threshold):
-            return i
-    return np.inf
+from sklearn.metrics import adjusted_rand_score, silhouette_score
 
 def load_and_preprocess_mnist(n_samples=10000, n_components=50):
     """
@@ -164,43 +133,20 @@ def generate_synthetic_data(n_clients=5, n_samples_per_client=100, n_centers=3, 
         data.append(X)
     return data
 
-def evaluate_global_model(global_centroids, test_data, test_labels, metric="all"):
+def evaluate_global_model(global_centroids, test_data, test_labels):
     # Assign test points to nearest global centroids
     distances = cdist(test_data, global_centroids)
     predicted_labels = np.argmin(distances, axis=1)
 
-    # Define all possible metrics
-    all_metrics = {
-        "ari": adjusted_rand_score,
-        "mutual_info": mutual_info_score,
-        "fowlkes_mallows": fowlkes_mallows_score,
-        "completeness": completeness_score,
-        "homogeneity": homogeneity_score,
-        "v_measure": v_measure_score,
-        "silhouette": silhouette_score,
-        "calinski_harabasz": calinski_harabasz_score,
-        "davies_bouldin": davies_bouldin_score
-    }
-
-    # Determine which metrics to compute
-    if metric == "all":
-        metrics_to_compute = all_metrics
+    # Compute evaluation metrics
+    ari = adjusted_rand_score(test_labels, predicted_labels)
+    if len(set(predicted_labels)) < 2:
+        silhouette = None
+        print("Only one predicted label; not possible to compute silhouette score.")
     else:
-        metrics_to_compute = {metric: all_metrics[metric]}
+        silhouette = silhouette_score(test_data, predicted_labels)
 
-    # Compute metrics
-    results = {}
-    for name, func in metrics_to_compute.items():
-        if name in ["silhouette", "calinski_harabasz", "davies_bouldin"]:
-            if len(set(predicted_labels)) < 2:
-                results[name] = None
-                print(f"Warning: Cannot compute {name} score with a single cluster")
-            else:
-                results[name] = func(test_data, predicted_labels)
-        else:
-            results[name] = func(test_labels, predicted_labels)
-
-    return results
+    return ari, silhouette
 
 def create_base_dataset(n_samples, n_features, n_clusters, random_state=42):
     X, y = make_blobs(
@@ -491,8 +437,8 @@ def plot_data(base_data, base_labels, client_data):
     plt.xlim(-lim, lim)
     plt.ylim(-lim, lim)
     # colormap = plt.cm.get_cmap("tab10", len(client_data))
-    colormap = ["red", "blue", "green", "orange", "purple", "brown", "pink", "gray", "olive", "cyan"] * 100
-    symbols = ["o", "s", "D", "v", "^", ">", "<", "p", "P", "*"] * 100
+    colormap = ["red", "blue", "green", "orange", "purple", "brown", "pink", "gray", "olive", "cyan"]
+    symbols = ["o", "s", "D", "v", "^", ">", "<", "p", "P", "*"]
     for i, data in enumerate(client_data):
         # print(f"Client {i} has {len(data)} samples, color: {colormap[i]}, marker: {symbols[i]}")
         plt.scatter(data[:, 0], data[:, 1], alpha=0.3, c=colormap[i], marker=symbols[i])
@@ -524,7 +470,7 @@ def plot_data_after_aggregation(clients, server):
 
 def example_base_dataset():
     # Create base dataset
-    base_data, base_labels = create_base_dataset(n_samples=1000, n_features=2, n_clusters=config.n_centers_generated)
+    base_data, base_labels = create_base_dataset(n_samples=1000, n_features=2, n_clusters=parameters.n_centers_generated)
     # Partition the data
     client_data = partition_data(base_data, base_labels, n_clients=3)
     # Sample test data
