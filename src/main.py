@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 from utils import generate_synthetic_data, create_base_dataset, partition_data, plot_data, sample_test_data, evaluate_global_model, mnist_clustering_experiment, plot_data_after_aggregation, generate_synthetic_batch, append_client_data
 from client import LocalClient
 from server import ServerAggregator
+from plotting import plot_metrics, plot_metrics_with_local_only, plot_metrics_global_and_local_only
+from analyze_results import calculate_average_gain, print_gain_summary
 
 timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 OUTPUT_DIR = f"output/{timestamp}"
@@ -50,7 +52,7 @@ def run_experiment(config_parameters, experiment_name=""):
 
     metrics = {"server": {"pre_aggregation": {"ari": [], "silhouette": []}, "post_aggregation": {"ari": [], "silhouette": []}}}
     for i in range(config_parameters.n_clients):
-        metrics[f"client_{i}"] = {"local": {"ari": [], "silhouette": []}, "global": {"ari": [], "silhouette": []}}
+        metrics[f"client_{i}"] = {"local": {"ari": [], "silhouette": []}, "global": {"ari": [], "silhouette": []}, "local_only": {"ari": [], "silhouette": []}}
 
     for i in range(n_iterations):
         print(f"Iteration {i+1}/{n_iterations}")
@@ -76,10 +78,15 @@ def run_experiment(config_parameters, experiment_name=""):
             metrics[f"client_{client.client_id}"]["local"]["ari"].append(ari)
             metrics[f"client_{client.client_id}"]["local"]["silhouette"].append(silhouette)
 
+            ari, silhouette = evaluate_global_model(client.local_only_centroids, client.data, client.labels)
+            metrics[f"client_{client.client_id}"]["local_only"]["ari"].append(ari)
+            metrics[f"client_{client.client_id}"]["local_only"]["silhouette"].append(silhouette)
+
 
         # Aggregate at server
         server = ServerAggregator(merging_threshold=config_parameters.merging_threshold, visualize=False)
         server.aggregate(local_models, method="pairwise")
+        # server.aggregate(local_models, method="meanshift")
 
         if config_parameters.visualize:
             plot_data_after_aggregation(clients, server)
@@ -109,7 +116,7 @@ def run_experiment(config_parameters, experiment_name=""):
             client.global_centroids = global_centroids
             client.label_with_global_model(global_centroids)
 
-        # (Optional) Evaluate global labels on local data
+        # Evaluate global labels on local data
         for client in clients:
             ari, silhouette = evaluate_global_model(global_centroids, client.data, client.global_labels)
             metrics[f"client_{client.client_id}"]["global"]["ari"].append(ari)
@@ -171,6 +178,9 @@ def run_experiment(config_parameters, experiment_name=""):
         for j, value in enumerate(metrics[f"client_{i}"]["global"]["silhouette"]):
             if value == None:
                 metrics[f"client_{i}"]["global"]["silhouette"][j] = 0
+        for j, value in enumerate(metrics[f"client_{i}"]["local_only"]["silhouette"]):
+            if value == None:
+                metrics[f"client_{i}"]["local_only"]["silhouette"][j] = 0
 
 
     # # Plot the silhouette scores (not the ARI). There should be three subplots: One for the local silhouette scores, one for the global silhouette scores, and one for the server silhouette scores (pre- and post-aggregation).
@@ -218,100 +228,8 @@ def run_experiment(config_parameters, experiment_name=""):
     with open(OUTPUT_DIR + f"/metrics_{timestamp}.json", "w") as f:
         json.dump(metrics, f)
 
-    
-
-
-    # # Plot the ARI scores. There should be three subplots: One for the local ARI scores, one for the global ARI scores, and one for the server ARI scores (pre- and post-aggregation).
-    # fig, ax = plt.subplots(1, 3, figsize=(15, 5))
-    # # for client_id in range(config_parameters.n_clients):
-    # #     ax[0].plot(metrics[f"client_{client_id}"]["local"]["ari"], alpha=0.5)
-    # #     ax[1].plot(metrics[f"client_{client_id}"]["global"]["ari"], alpha=0.5)
-    # ax[2].plot(metrics["server"]["pre_aggregation"]["ari"], label="Server - Pre-aggregation", linestyle="--")
-    # ax[2].plot(metrics["server"]["post_aggregation"]["ari"], label="Server - Post-aggregation")
-
-    # # Plot average ARI scores
-    # ax[0].plot(np.mean([metrics[f"client_{client_id}"]["local"]["ari"] for client_id in range(config_parameters.n_clients)], axis=0), label="Average Local", color="black", linestyle="--")
-    # ax[1].plot(np.mean([metrics[f"client_{client_id}"]["global"]["ari"] for client_id in range(config_parameters.n_clients)], axis=0), label="Average Global", color="black", linestyle="--")
-
-    # ax[0].set_title("Local ARI Scores")
-    # ax[1].set_title("Global ARI Scores")
-    # ax[2].set_title("Server ARI Scores")
-    # ax[0].legend()
-    # ax[1].legend()
-    # ax[2].legend()
-    # # Set equal y-axis limits for better comparison
-    # ax[0].set_ylim([0, 1])
-    # ax[1].set_ylim([0, 1])
-    # ax[2].set_ylim([0, 1])
-
-    # plt.show()
-
     return metrics
 
-def plot_metrics(metrics_dict, param_name, param_values, metric_name="silhouette"):
-    fig, ax = plt.subplots(1, 2, figsize=(9, 4))
-    for param_value in param_values:
-        metrics = metrics_dict[param_value]
-        if param_name == "n_clients":
-            local_avg = np.mean([metrics[f"client_{client_id}"]["local"][metric_name] for client_id in range(param_value)], axis=0)
-            global_avg = np.mean([metrics[f"client_{client_id}"]["global"][metric_name] for client_id in range(param_value)], axis=0)
-        else:
-            local_avg = np.mean([metrics[f"client_{client_id}"]["local"][metric_name] for client_id in range(config_parameters.n_clients)], axis=0)
-            global_avg = np.mean([metrics[f"client_{client_id}"]["global"][metric_name] for client_id in range(config_parameters.n_clients)], axis=0)
-        ax[0].plot(local_avg, label=f"{param_name}={param_value}")
-        ax[1].plot(global_avg, label=f"{param_name}={param_value}")
-
-    ax[0].set_title(f"Local average {metric_name} scores")
-    ax[1].set_title(f"Global average {metric_name} scores")
-    ax[0].legend(loc='lower right')
-    ax[1].legend(loc='lower right')
-    ax[0].set_ylim([0, 1])
-    ax[1].set_ylim([0, 1])
-
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    plt.savefig(OUTPUT_DIR + f"/{metric_name}_scores_{param_name}_{timestamp}.pdf")
-    # plt.show()
-
-    # Make another plot, only plotting the global scores
-    fig, ax = plt.subplots(1, 1, figsize=(4,3))
-    for param_value in param_values:
-        metrics = metrics_dict[param_value]
-        if param_name == "n_clients":
-            global_avg = np.mean([metrics[f"client_{client_id}"]["global"][metric_name] for client_id in range(param_value)], axis=0)
-        else:
-            global_avg = np.mean([metrics[f"client_{client_id}"]["global"][metric_name] for client_id in range(config_parameters.n_clients)], axis=0)
-        ax.plot(global_avg, label=f"{param_name}={param_value}")
-    ax.set_title(f"Global average {metric_name} scores")
-    ax.legend(loc='lower right')
-    ax.set_ylim([0, 1])
-
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    plt.savefig(OUTPUT_DIR + f"/global_{metric_name}_scores_{param_name}_{timestamp}.pdf")
-    # plt.show()
-
-def calculate_average_gain(metrics_dict, param_name, param_values, metric_name="silhouette"):
-    gains = {}
-    for param_value in param_values:
-        metrics = metrics_dict[param_value]
-        if param_name == "n_clients":
-            local_avg = np.mean([metrics[f"client_{client_id}"]["local"][metric_name] for client_id in range(param_value)], axis=0)
-            global_avg = np.mean([metrics[f"client_{client_id}"]["global"][metric_name] for client_id in range(param_value)], axis=0)
-        else:
-            local_avg = np.mean([metrics[f"client_{client_id}"]["local"][metric_name] for client_id in range(config_parameters.n_clients)], axis=0)
-            global_avg = np.mean([metrics[f"client_{client_id}"]["global"][metric_name] for client_id in range(config_parameters.n_clients)], axis=0)
-        
-        absolute_gain = np.mean(global_avg - local_avg)
-        relative_gain = np.mean((global_avg - local_avg) / local_avg) * 100  # in percentage
-        gains[param_value] = {"absolute_gain": absolute_gain, "relative_gain": relative_gain}
-    
-    return gains
-
-def print_gain_summary(gains, param_name):
-    print(f"\nSummary of gains for {param_name}:")
-    for param_value, gain in gains.items():
-        print(f"{param_name}={param_value}:")
-        print(f"  Absolute gain: {gain['absolute_gain']:.4f}")
-        print(f"  Relative gain: {gain['relative_gain']:.2f}%")
 
 if __name__ == "__main__":
     if not os.path.exists(OUTPUT_DIR):
@@ -336,7 +254,7 @@ if __name__ == "__main__":
     n_clients_values = [4, 8, 16]
     n_centers_generated_values = [10, 15, 20]
     n_samples_per_client_values = [10, 20, 50]
-    merging_threshold_values = [1.0, 2.0, 4.0, 6.0]
+    merging_threshold_values = [2.0, 4.0, 6.0, 8.0]
 
     # Save the values of the parameters that will be varied
     with open(OUTPUT_DIR + "/parameter_values.json", "w") as f:
@@ -359,8 +277,10 @@ if __name__ == "__main__":
     with open(OUTPUT_DIR + "/max_iterations_clustering_metrics.json", "w") as f:
         json.dump(max_iterations_clustering_metrics, f)
 
-    plot_metrics(max_iterations_clustering_metrics, "max_iterations_clustering", max_iterations_clustering_values)
-    plot_metrics(max_iterations_clustering_metrics, "max_iterations_clustering", max_iterations_clustering_values, metric_name="ari")
+    plot_metrics(max_iterations_clustering_metrics, "max_iterations_clustering", max_iterations_clustering_values, output_dir=OUTPUT_DIR)
+    plot_metrics(max_iterations_clustering_metrics, "max_iterations_clustering", max_iterations_clustering_values, metric_name="ari", output_dir=OUTPUT_DIR)
+    plot_metrics_with_local_only(max_iterations_clustering_metrics, "max_iterations_clustering", max_iterations_clustering_values, output_dir=OUTPUT_DIR)
+    plot_metrics_global_and_local_only(max_iterations_clustering_metrics, "max_iterations_clustering", max_iterations_clustering_values, output_dir=OUTPUT_DIR)
 
     # Calculate and save average gains for max_iterations_clustering
     max_iterations_clustering_gains = calculate_average_gain(max_iterations_clustering_metrics, "max_iterations_clustering", max_iterations_clustering_values)
@@ -386,8 +306,10 @@ if __name__ == "__main__":
     with open(OUTPUT_DIR + "/n_clients_metrics.json", "w") as f:
         json.dump(max_iterations_clustering_metrics, f)
 
-    plot_metrics(n_clients_metrics, "n_clients", n_clients_values)
-    plot_metrics(n_clients_metrics, "n_clients", n_clients_values, metric_name="ari")
+    plot_metrics(n_clients_metrics, "n_clients", n_clients_values, output_dir=OUTPUT_DIR)
+    plot_metrics(n_clients_metrics, "n_clients", n_clients_values, metric_name="ari", output_dir=OUTPUT_DIR)
+    plot_metrics_with_local_only(n_clients_metrics, "n_clients", n_clients_values, output_dir=OUTPUT_DIR)
+    plot_metrics_global_and_local_only(n_clients_metrics, "n_clients", n_clients_values, output_dir=OUTPUT_DIR)
     
     # Calculate and save average gains for n_clients
     n_clients_gains = calculate_average_gain(n_clients_metrics, "n_clients", n_clients_values)
@@ -397,52 +319,54 @@ if __name__ == "__main__":
 
     config_parameters.__dict__.update(original_parameters)
 
-    # Loop over different values of n_centers_generated and visualize the results
-    n_centers_generated_metrics = {}
-    for n_centers_generated in n_centers_generated_values:
-        config_parameters.n_centers_generated = n_centers_generated
-        config_parameters.n_clusters = [None] * (config_parameters.n_clients // 2) + [int(n_centers_generated * 0.5)] * (config_parameters.n_clients // 2)
-        print(f"Running experiment with n_centers_generated={n_centers_generated}")
-        metrics = run_experiment(config_parameters)
-        n_centers_generated_metrics[n_centers_generated] = metrics
+    # # Loop over different values of n_centers_generated and visualize the results
+    # n_centers_generated_metrics = {}
+    # for n_centers_generated in n_centers_generated_values:
+    #     config_parameters.n_centers_generated = n_centers_generated
+    #     config_parameters.n_clusters = [None] * (config_parameters.n_clients // 2) + [int(n_centers_generated * 0.5)] * (config_parameters.n_clients // 2)
+    #     print(f"Running experiment with n_centers_generated={n_centers_generated}")
+    #     metrics = run_experiment(config_parameters)
+    #     n_centers_generated_metrics[n_centers_generated] = metrics
 
-    # Save metrics to a JSON file, indicating the parameter that was varied
-    with open(OUTPUT_DIR + "/n_centers_generated_metrics.json", "w") as f:
-        json.dump(n_centers_generated_metrics, f)
+    # # Save metrics to a JSON file, indicating the parameter that was varied
+    # with open(OUTPUT_DIR + "/n_centers_generated_metrics.json", "w") as f:
+    #     json.dump(n_centers_generated_metrics, f)
 
-    plot_metrics(n_centers_generated_metrics, "n_clusters", n_centers_generated_values)
-    plot_metrics(n_centers_generated_metrics, "n_clusters", n_centers_generated_values, metric_name="ari")
+    # plot_metrics(n_centers_generated_metrics, "n_clusters", n_centers_generated_values, output_dir=OUTPUT_DIR)
+    # plot_metrics(n_centers_generated_metrics, "n_clusters", n_centers_generated_values, metric_name="ari", output_dir=OUTPUT_DIR)
+    # plot_metrics_with_local_only(n_centers_generated_metrics, "n_clusters", n_centers_generated_values, output_dir=OUTPUT_DIR)
 
-    # Calculate and save average gains for n_centers_generated
-    n_centers_generated_gains = calculate_average_gain(n_centers_generated_metrics, "n_clusters", n_centers_generated_values)
-    with open(OUTPUT_DIR + "/n_centers_generated_gains.json", "w") as f:
-        json.dump(n_centers_generated_gains, f)
-    print_gain_summary(n_centers_generated_gains, "n_clusters")
+    # # Calculate and save average gains for n_centers_generated
+    # n_centers_generated_gains = calculate_average_gain(n_centers_generated_metrics, "n_clusters", n_centers_generated_values)
+    # with open(OUTPUT_DIR + "/n_centers_generated_gains.json", "w") as f:
+    #     json.dump(n_centers_generated_gains, f)
+    # print_gain_summary(n_centers_generated_gains, "n_clusters")
 
-    config_parameters.__dict__.update(original_parameters)
+    # config_parameters.__dict__.update(original_parameters)
 
-    # Loop over different values of n_samples_per_client and visualize the results
-    n_samples_per_client_metrics = {}
-    for n_samples_per_client in n_samples_per_client_values:
-        config_parameters.n_samples_per_client = n_samples_per_client
-        print(f"Running experiment with n_samples_per_client={n_samples_per_client}")
-        metrics = run_experiment(config_parameters)
-        n_samples_per_client_metrics[n_samples_per_client] = metrics
+    # # Loop over different values of n_samples_per_client and visualize the results
+    # n_samples_per_client_metrics = {}
+    # for n_samples_per_client in n_samples_per_client_values:
+    #     config_parameters.n_samples_per_client = n_samples_per_client
+    #     print(f"Running experiment with n_samples_per_client={n_samples_per_client}")
+    #     metrics = run_experiment(config_parameters)
+    #     n_samples_per_client_metrics[n_samples_per_client] = metrics
 
-    # Save metrics to a JSON file, indicating the parameter that was varied
-    with open(OUTPUT_DIR + "/n_samples_per_client_metrics.json", "w") as f:
-        json.dump(n_samples_per_client_metrics, f)
+    # # Save metrics to a JSON file, indicating the parameter that was varied
+    # with open(OUTPUT_DIR + "/n_samples_per_client_metrics.json", "w") as f:
+    #     json.dump(n_samples_per_client_metrics, f)
 
-    plot_metrics(n_samples_per_client_metrics, "n_samples_per_client", n_samples_per_client_values)
-    plot_metrics(n_samples_per_client_metrics, "n_samples_per_client", n_samples_per_client_values, metric_name="ari")
+    # plot_metrics(n_samples_per_client_metrics, "n_samples_per_client", n_samples_per_client_values, output_dir=OUTPUT_DIR)
+    # plot_metrics(n_samples_per_client_metrics, "n_samples_per_client", n_samples_per_client_values, metric_name="ari", output_dir=OUTPUT_DIR)
+    # plot_metrics_with_local_only(n_samples_per_client_metrics, "n_samples_per_client", n_samples_per_client_values, output_dir=OUTPUT_DIR)
 
-    # Calculate and save average gains for n_samples_per_client
-    n_samples_per_client_gains = calculate_average_gain(n_samples_per_client_metrics, "n_samples_per_client", n_samples_per_client_values)
-    with open(OUTPUT_DIR + "/n_samples_per_client_gains.json", "w") as f:
-        json.dump(n_samples_per_client_gains, f)
-    print_gain_summary(n_samples_per_client_gains, "n_samples_per_client")
+    # # Calculate and save average gains for n_samples_per_client
+    # n_samples_per_client_gains = calculate_average_gain(n_samples_per_client_metrics, "n_samples_per_client", n_samples_per_client_values)
+    # with open(OUTPUT_DIR + "/n_samples_per_client_gains.json", "w") as f:
+    #     json.dump(n_samples_per_client_gains, f)
+    # print_gain_summary(n_samples_per_client_gains, "n_samples_per_client")
 
-    config_parameters.__dict__.update(original_parameters)
+    # config_parameters.__dict__.update(original_parameters)
 
     # Loop over different values of merging_threshold and visualize the results
     merging_threshold_metrics = {}
@@ -456,8 +380,10 @@ if __name__ == "__main__":
     with open(OUTPUT_DIR + "/merging_threshold_metrics.json", "w") as f:
         json.dump(merging_threshold_metrics, f)
 
-    plot_metrics(merging_threshold_metrics, "merging_threshold", merging_threshold_values)
-    plot_metrics(merging_threshold_metrics, "merging_threshold", merging_threshold_values, metric_name="ari")
+    plot_metrics(merging_threshold_metrics, "merging_threshold", merging_threshold_values, output_dir=OUTPUT_DIR)
+    plot_metrics(merging_threshold_metrics, "merging_threshold", merging_threshold_values, metric_name="ari", output_dir=OUTPUT_DIR)
+    plot_metrics_with_local_only(merging_threshold_metrics, "merging_threshold", merging_threshold_values, output_dir=OUTPUT_DIR)
+    plot_metrics_global_and_local_only(merging_threshold_metrics, "merging_threshold", merging_threshold_values, output_dir=OUTPUT_DIR)
 
     # Calculate and save average gains for merging_threshold
     merging_threshold_gains = calculate_average_gain(merging_threshold_metrics, "merging_threshold", merging_threshold_values)

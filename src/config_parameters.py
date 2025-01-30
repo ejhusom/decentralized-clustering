@@ -13,3 +13,6 @@ clustering_methods = ["meanshift"] * (n_clients // 2) + ["kmeans"] * (n_clients 
 n_clusters = [None] * (n_clients // 2) + [8] * (n_clients // 2)
 data_increase_factor = 0.1
 distribution_shift_type = "significant"
+# Merging parameters
+use_dynamic_threshold = True
+use_weighted_merging = True
