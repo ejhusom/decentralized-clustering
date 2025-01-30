@@ -139,8 +139,8 @@ def evaluate_global_model(global_centroids, test_data, test_labels):
     predicted_labels = np.argmin(distances, axis=1)
 
     # Compute evaluation metrics
-    # ari = adjusted_rand_score(test_labels, predicted_labels)
-    ari = mutual_info_score(test_labels, predicted_labels)
+    ari = adjusted_rand_score(test_labels, predicted_labels)
+    # ari = mutual_info_score(test_labels, predicted_labels)
     if len(set(predicted_labels)) < 2:
         silhouette = None
         print("Only one predicted label; not possible to compute silhouette score.")
