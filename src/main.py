@@ -11,8 +11,6 @@ from server import ServerAggregator
 
 timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 OUTPUT_DIR = f"output/{timestamp}"
-if not os.path.exists(OUTPUT_DIR):
-    os.makedirs(OUTPUT_DIR)
 
 def run_experiment(config_parameters, experiment_name=""):
     # Create base dataset
@@ -316,6 +314,9 @@ def print_gain_summary(gains, param_name):
         print(f"  Relative gain: {gain['relative_gain']:.2f}%")
 
 if __name__ == "__main__":
+    if not os.path.exists(OUTPUT_DIR):
+        os.makedirs(OUTPUT_DIR)
+
     # run_experiment(config_parameters)
     # Save the original parameters from parameters.py module
     parameters_to_save = dir(config_parameters).copy()
