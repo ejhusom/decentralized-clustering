@@ -3,7 +3,7 @@ import numpy as np
 from sklearn.cluster import KMeans, MeanShift
 from scipy.spatial.distance import cdist
 
-import parameters
+import config_parameters
 
 class LocalClient:
     def __init__(self, client_id, data, n_clusters=None, clustering_method="kmeans", visualize=False):
@@ -47,7 +47,7 @@ class LocalClient:
         self.model = model
         
     def _train_kmeans(self):
-        return KMeans(n_clusters=self.n_clusters, random_state=42, max_iter=parameters.max_iterations_clustering)
+        return KMeans(n_clusters=self.n_clusters, random_state=42, max_iter=config_parameters.max_iterations_clustering)
 
     def _train_meanshift(self):
         return MeanShift()
@@ -71,18 +71,33 @@ class LocalClient:
         return global_labels
 
     def retrain(self, global_centroids):
-        if self.clustering_method == "kmeans":
-            # Check if n_samples in self.data is less than n_clusters, and if so, reduce n_clusters
-            if len(self.data) < len(global_centroids):
-                print("Not enough samples to retrain using global centroids. Reducing n_clusters.")
-                model = KMeans(n_clusters=len(self.centroids), init=self.centroids, n_init=1, random_state=42, max_iter=parameters.max_iterations_clustering)
-                model.fit(self.data)
-                self.centroids = model.cluster_centers_
-            else:
-                # Initialize clustering with global centroids
-                model = KMeans(n_clusters=len(global_centroids), init=global_centroids, n_init=1, random_state=42, max_iter=parameters.max_iterations_clustering)
-        elif self.clustering_method == "meanshift":
-            model = MeanShift(seeds=global_centroids)
+        # Check if n_samples in self.data is less than n_clusters, and if so, reduce n_clusters
+        if len(self.data) < len(global_centroids):
+            print("Not enough samples to retrain using global centroids. Reducing n_clusters.")
+            model = KMeans(n_clusters=len(self.centroids), init=self.centroids, n_init=1, random_state=42, max_iter=config_parameters.max_iterations_clustering)
+            model.fit(self.data)
+            self.centroids = model.cluster_centers_
+        else:
+            # Initialize clustering with global centroids
+            model = KMeans(n_clusters=len(global_centroids), init=global_centroids, n_init=1, random_state=42, max_iter=config_parameters.max_iterations_clustering)
+        # if self.clustering_method == "kmeans":
+        #     # Check if n_samples in self.data is less than n_clusters, and if so, reduce n_clusters
+        #     if len(self.data) < len(global_centroids):
+        #         print("Not enough samples to retrain using global centroids. Reducing n_clusters.")
+        #         model = KMeans(n_clusters=len(self.centroids), init=self.centroids, n_init=1, random_state=42, max_iter=config_parameters.max_iterations_clustering)
+        #         model.fit(self.data)
+        #         self.centroids = model.cluster_centers_
+        #     else:
+        #         # Initialize clustering with global centroids
+        #         model = KMeans(n_clusters=len(global_centroids), init=global_centroids, n_init=1, random_state=42, max_iter=config_parameters.max_iterations_clustering)
+        # elif self.clustering_method == "meanshift":
+        #     # # Estimate local bandwidth based on distances to global centroids
+        #     # distances = cdist(self.data, global_centroids)
+        #     # min_distances = np.min(distances, axis=1)
+        #     # # Use median or some percentile of distances as bandwidth
+        #     # bandwidth = np.median(min_distances)
+        #     # model = MeanShift(bandwidth=bandwidth, seeds=global_centroids)
+        #     # model =MeanShift(seeds=global_centroids)
 
         model.fit(self.data)
         self.centroids = model.cluster_centers_

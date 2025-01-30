@@ -3,12 +3,12 @@ from scipy.spatial.distance import cdist
 from sklearn.datasets import make_blobs
 import matplotlib.pyplot as plt
 import numpy as np
-import parameters
+import config_parameters
 
 from sklearn.datasets import fetch_openml
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
-from sklearn.metrics import adjusted_rand_score, silhouette_score
+from sklearn.metrics import adjusted_rand_score, silhouette_score, mutual_info_score
 
 def load_and_preprocess_mnist(n_samples=10000, n_components=50):
     """
@@ -139,7 +139,8 @@ def evaluate_global_model(global_centroids, test_data, test_labels):
     predicted_labels = np.argmin(distances, axis=1)
 
     # Compute evaluation metrics
-    ari = adjusted_rand_score(test_labels, predicted_labels)
+    # ari = adjusted_rand_score(test_labels, predicted_labels)
+    ari = mutual_info_score(test_labels, predicted_labels)
     if len(set(predicted_labels)) < 2:
         silhouette = None
         print("Only one predicted label; not possible to compute silhouette score.")
@@ -306,11 +307,11 @@ def generate_synthetic_batch(base_data, base_labels,
 
     # Based on the distribution shift type, new clusters may be added to the client.
     if distribution_shift_type == 'mild':
-        cluster_shift = rng.integers(1, max(1, int(len(unique_labels) * 0.2)))
+        cluster_shift = rng.integers(1, max(2, int(len(unique_labels) * 0.2)))
     elif distribution_shift_type == 'moderate':
-        cluster_shift = rng.integers(1, max(2, int(len(unique_labels) * 0.3)))
+        cluster_shift = rng.integers(1, max(3, int(len(unique_labels) * 0.3)))
     elif distribution_shift_type == 'significant':
-        cluster_shift = rng.integers(1, max(3, int(len(unique_labels) * 0.5)))
+        cluster_shift = rng.integers(1, max(4, int(len(unique_labels) * 0.5)))
     else:
         raise ValueError("Invalid distribution shift type")
 
@@ -470,7 +471,7 @@ def plot_data_after_aggregation(clients, server):
 
 def example_base_dataset():
     # Create base dataset
-    base_data, base_labels = create_base_dataset(n_samples=1000, n_features=2, n_clusters=parameters.n_centers_generated)
+    base_data, base_labels = create_base_dataset(n_samples=1000, n_features=2, n_clusters=config_parameters.n_centers_generated)
     # Partition the data
     client_data = partition_data(base_data, base_labels, n_clients=3)
     # Sample test data
