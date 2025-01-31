@@ -109,8 +109,9 @@ def plot_metrics_global_and_local_only(metrics_dict, param_name, param_values, m
                 global_avg = np.mean([metrics[f"client_{client_id}"]["global"][metric_name] for client_id in range(config_parameters.n_clients)], axis=0)
                 local_only_avg = np.mean([metrics[f"client_{client_id}"]["local_only"][metric_name] for client_id in range(config_parameters.n_clients)], axis=0)
             
-            ax.plot(global_avg, label=f"Global {param_name}={param_value}")
-            ax.plot(local_only_avg, label=f"Local Only {param_name}={param_value}", linestyle='dotted')
+            color = next(ax._get_lines.prop_cycler)['color']
+            ax.plot(global_avg, label=f"Global {param_name}={param_value}", color=color)
+            ax.plot(local_only_avg, label=f"Local Only {param_name}={param_value}", linestyle='dotted', color=color)
 
             data_to_save[param_value] = {
                 "global_avg": global_avg.tolist(),
@@ -135,8 +136,9 @@ def plot_metrics_global_and_local_only(metrics_dict, param_name, param_values, m
                 global_avg = np.mean([metrics[f"client_{client_id}"]["global"][metric_name] for client_id in range(config_parameters.n_clients)], axis=0)
                 local_only_avg = np.mean([metrics[f"client_{client_id}"]["local_only"][metric_name] for client_id in range(config_parameters.n_clients)], axis=0)
             
-            ax[0].plot(global_avg, label=f"{param_name}={param_value}")
-            ax[1].plot(local_only_avg, label=f"{param_name}={param_value}")
+            color = next(ax[0]._get_lines.prop_cycler)['color']
+            ax[0].plot(global_avg, label=f"{param_name}={param_value}", color=color)
+            ax[1].plot(local_only_avg, label=f"{param_name}={param_value}", linestyle='dotted', color=color)
 
             data_to_save[param_value] = {
                 "global_avg": global_avg.tolist(),
@@ -179,15 +181,35 @@ def plot_from_json_files(json_files, output_dir="output"):
         param_name = match.group(1).replace("_", " ") if match else None
         param_name = param_name.replace(" ", "_")
 
+        # Make a list of ten colors to cycle through for the lines of the plot
+        colors = plt.cm.get_cmap('tab10', 10).colors
+
         print(param_name)  # Output: "my param name"
         print(f"Parameter name: {param_name}")
         fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-        for param_value, metrics in data.items():
-            global_avg = metrics["global_avg"]
-            local_only_avg = metrics["local_only_avg"]
-            ax.plot(global_avg, label=f"Global {param_name}={param_value}")
-            ax.plot(local_only_avg, label=f"Local Only {param_name}={param_value}", linestyle='dotted')
 
+        # If param is merging_threshold, the local_only_avg should be averaged into one line.
+        if param_name == "merging_threshold":
+            for i, (param_value, metrics) in enumerate(data.items()):
+                global_avg = metrics["global_avg"]
+                local_only_avg = metrics["local_only_avg"]
+                color = colors[i % len(colors)]
+                ax.plot(global_avg, label=f"Global {param_name}={param_value}", color=color)
+            
+            # Average the local_only_avg into one line
+            local_only_avg_param_avg = np.mean([metrics["local_only_avg"] for metrics in data.values()], axis=0)
+            ax.plot(local_only_avg_param_avg, label=f"Local Only", linestyle='dotted', color='black')
+        else:
+            for i, (param_value, metrics) in enumerate(data.items()):
+                global_avg = metrics["global_avg"]
+                local_only_avg = metrics["local_only_avg"]
+                color = colors[i % len(colors)]
+                ax.plot(global_avg, label=f"Global {param_name}={param_value}", color=color)
+                ax.plot(local_only_avg, label=f"Local Only {param_name}={param_value}", linestyle='dotted', color=color)
+
+        # Set axes labels
+        ax.set_xlabel("Iteration")
+        ax.set_ylabel("Silhouette score")
         ax.set_title(f"Global and Local Only average silhouette scores")
         ax.legend(loc='lower right')
         ax.set_ylim([0, 1])

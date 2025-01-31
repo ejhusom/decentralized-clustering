@@ -428,7 +428,7 @@ def example_generate_synthetic_data():
 def plot_data(base_data, base_labels, client_data):
     # Plot base dataset together with client data. Visualize the partitioned data for each client with different colors.
     lim = 13
-    plt.figure(figsize=(6, 3))
+    plt.figure(figsize=(7, 3))
     plt.subplot(1, 2, 1)
     plt.xlim(-lim, lim)
     plt.ylim(-lim, lim)
@@ -443,7 +443,7 @@ def plot_data(base_data, base_labels, client_data):
     for i, data in enumerate(client_data):
         # print(f"Client {i} has {len(data)} samples, color: {colormap[i]}, marker: {symbols[i]}")
         plt.scatter(data[:, 0], data[:, 1], alpha=0.2, c=colormap[i], marker=symbols[i])
-    plt.legend([f"Client {i}" for i in range(len(client_data))])
+    plt.legend([f"Client {i}" for i in range(len(client_data))], loc='upper left', bbox_to_anchor=(1, 1))
     plt.title("Partitioned Data for Clients")
     # Set same limits for both plots, based on the base dataset
     plt.tight_layout()
