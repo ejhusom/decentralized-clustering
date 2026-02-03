@@ -7,6 +7,38 @@ import csv
 import sys
 import config_parameters
 
+
+def _get_next_color(ax):
+    """Return the next color from the axis' property cycle in a robust way.
+    Tries several APIs to be compatible with different Matplotlib versions.
+    """
+    # Try Line2D manager's prop_cycler (older mpl)
+    try:
+        return next(ax._get_lines.prop_cycler)["color"]
+    except Exception:
+        pass
+
+    # Try Line2D manager's get_next_color (private API available in some mpl versions)
+    try:
+        return ax._get_lines.get_next_color()
+    except Exception:
+        pass
+
+    # Try public get_prop_cycle if available
+    try:
+        get_prop = getattr(ax, "get_prop_cycle", None)
+        if get_prop is not None:
+            return next(ax.get_prop_cycle())["color"]
+    except Exception:
+        pass
+
+    # Fallback: rcParams cycler (not an iterator), so iterate over it
+    try:
+        return next(iter(plt.rcParams["axes.prop_cycle"]))["color"]
+    except Exception:
+        # Final fallback: use a color from a colormap
+        return plt.cm.get_cmap("tab10").colors[0]
+
 def plot_metrics(metrics_dict, param_name, param_values, metric_name="silhouette", output_dir="output"):
     fig, ax = plt.subplots(1, 2, figsize=(9, 4))
     for param_value in param_values:
@@ -109,7 +141,7 @@ def plot_metrics_global_and_local_only(metrics_dict, param_name, param_values, m
                 global_avg = np.mean([metrics[f"client_{client_id}"]["global"][metric_name] for client_id in range(config_parameters.n_clients)], axis=0)
                 local_only_avg = np.mean([metrics[f"client_{client_id}"]["local_only"][metric_name] for client_id in range(config_parameters.n_clients)], axis=0)
             
-            color = next(ax._get_lines.prop_cycler)['color']
+            color = _get_next_color(ax)
             ax.plot(global_avg, label=f"Global {param_name}={param_value}", color=color)
             ax.plot(local_only_avg, label=f"Local Only {param_name}={param_value}", linestyle='dotted', color=color)
 
@@ -136,7 +168,7 @@ def plot_metrics_global_and_local_only(metrics_dict, param_name, param_values, m
                 global_avg = np.mean([metrics[f"client_{client_id}"]["global"][metric_name] for client_id in range(config_parameters.n_clients)], axis=0)
                 local_only_avg = np.mean([metrics[f"client_{client_id}"]["local_only"][metric_name] for client_id in range(config_parameters.n_clients)], axis=0)
             
-            color = next(ax[0]._get_lines.prop_cycler)['color']
+            color = _get_next_color(ax[0])
             ax[0].plot(global_avg, label=f"{param_name}={param_value}", color=color)
             ax[1].plot(local_only_avg, label=f"{param_name}={param_value}", linestyle='dotted', color=color)
 
