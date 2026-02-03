@@ -12,7 +12,13 @@ A federated learning framework for clustering where multiple clients train local
 ## Usage
 
 ```bash
+# Run directly:
 python src/main.py
+
+# Or using uv (recommended):
+# Install uv if needed
+pip install uv
+uv run python3 src/main.py
 ```
 
 Configure experiments in `src/config_parameters.py`:
